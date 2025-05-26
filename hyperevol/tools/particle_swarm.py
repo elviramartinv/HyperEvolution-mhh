@@ -136,11 +136,11 @@ class ParticleSwarm:
             **kwargs
     ):
         self.settings = settings
-        self.population_size = population_size
-        self.seed = seed
-        self.n_informants = n_informants
-        self.iterations = iterations
-        self.output_dir = output_dir
+        self.population_size = settings['population_size']
+        self.seed = settings['seed']
+        self.n_informants = settings['nr_informants']
+        self.iterations = settings['iterations']
+        self.output_dir = settings['output_dir']
         self.objective_function = objective_function
         self.hyperparameter_info = hyperparameter_info
         self.global_bests = []
