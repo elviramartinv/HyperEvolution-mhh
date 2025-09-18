@@ -1,0 +1,922 @@
+{
+    "kl_1": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_1": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_1": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_1": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_1": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_2": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_2": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_2": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_2": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_2": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_3": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_3": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_3": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_3": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_3": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_4": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_4": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_4": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_4": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_4": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_5": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_5": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_5": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_5": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_5": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_6": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_6": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_6": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_6": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_6": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_7": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_7": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_7": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_7": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_7": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_8": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_8": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_8": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_8": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_8": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_9": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_9": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_9": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_9": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_9": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_10": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_10": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_10": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_10": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_10": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_11": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_11": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_11": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_11": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_11": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_12": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_12": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_12": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_12": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_12": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_13": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_13": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_13": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_13": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_13": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_14": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_14": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_14": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_14": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_14": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_15": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_15": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_15": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_15": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_15": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_16": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_16": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_16": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_16": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_16": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_17": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_17": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_17": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_17": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_17": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_18": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_18": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_18": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_18": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_18": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_19": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_19": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_19": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_19": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_19": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_20": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_20": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_20": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_20": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_20": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_21": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_21": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_21": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_21": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_21": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_22": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_22": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_22": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_22": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_22": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kl_23": {
+        "max": 15.0,
+        "min":-15.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "kt_23": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2_23": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "cg_23": {
+        "max": 5.0,
+        "min":-5.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    },
+    "c2g_23": {
+        "max": 3.0,
+        "min":-3.0,
+        "int": false,
+        "exp": false,
+        "log": false,
+        "power": false
+    }
+}

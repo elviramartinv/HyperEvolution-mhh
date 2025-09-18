@@ -1,1 +1,1 @@
-TODO
+python mhh_scoring.py -c config/pso_cfg_b23_1.json -p None
