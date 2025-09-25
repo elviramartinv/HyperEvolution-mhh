@@ -79,7 +79,7 @@ import json
 masslist=set()
 
 import json
-mhhfile = open('/home/tolange/HyperEvolution/hyperevol/examples/mhhcoffs.json')
+mhhfile = open('/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/mhhcoffs.json')
 mhhjson = json.load(mhhfile)['acop_0.0-1.0_theta_0.0-1.0']
 theocoeffs = []
 for key in mhhjson.keys():
@@ -351,12 +351,43 @@ def ensemble_score(
     out = pool.map(sb, parameter_dicts)
     return out
 
+def create_condor_submit_file(job_script, condor_file):
+    """Creates .sub file for HTCondor based on the job script
+    
+    Parameters:
+    ----------
+    job_script : str
+        Path to the bash script to execute
+    condor_file : str
+        Path where to create the HTCondor .sub file
+    """
+    with open(condor_file, 'w') as f:
+        f.write(f"""
+# HTCondor submit file
+executable = {job_script}
+output = {job_script.replace('.sh', '.out')}
+error = {job_script.replace('.sh', '.err')}
+log = {job_script.replace('.sh', '.log')}
+
+# Recursos
+request_cpus = 1
+request_memory = 2GB
+request_disk = 1GB
+
+# Configuración
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+
+# Enviar trabajo
+queue
+""")
+
 def prepare_job_file(
         parameter_file,
         sample_nr,
         global_settings
 ):
-    """Writes the job file that will be executed by slurm
+    """Writes the job file that will be executed by batch system
 
     Parameters:
     ----------
@@ -376,22 +407,40 @@ def prepare_job_file(
     job_file = os.path.join(output_dir, 'parameter_' + str(sample_nr) + '.sh')
     error_file = os.path.join(output_dir, 'error' + str(sample_nr))
     output_file = os.path.join(output_dir, 'output' + str(sample_nr))
-    run_script = "/home/tolange/HyperEvolution/hyperevol/examples/mhh_scoring.py"
+    run_script = "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/mhh_scoring.py"
     pso_file = global_settings['pso_file']
+    
+    # Obtener configuraciones de SLURM del archivo de configuración
+    slurm_time = global_settings.get('slurm_time', '4:00:00')
+    slurm_cpus = global_settings.get('slurm_cpus', 2)
+    slurm_partition = global_settings.get('slurm_partition', 'wn')
+    
     with open(job_file, 'wt') as filehandle:
         filehandle.writelines(dedent(
             """
                 #!/bin/bash
-                #SBATCH --job-name=optimization
+                #SBATCH --job-name=mhh-opt
+                #SBATCH --partition=%s
                 #SBATCH --ntasks=1
-                #SBATCH --time=2:00:00
-                #SBATCH --cpus-per-task=2
+                #SBATCH --time=%s
+                #SBATCH --cpus-per-task=%s
                 #SBATCH -e %s
                 #SBATCH -o %s
-                env
-                date
-                /home/tolange/run-env.sh /home/tolange/myimage.simg python3 %s --parameter_file %s --pso_file %s
+                
+                echo "Starting job at $(date)"
+                echo "Running on $(hostname)"
+                
+                # Cargar entorno
+                source /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/Hopt/bin/activate
+                source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.36.04/x86_64-almalinux9.6-gcc115-opt/bin/thisroot.sh
+                
+                # Ejecutar script
+                cd /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples
+                python3 %s --parameter_file %s --pso_file %s
+                
+                echo "Job finished at $(date)"
             """ % (
+                    slurm_partition, slurm_time, slurm_cpus,
                     error_file, output_file, run_script,
                     parameter_file, pso_file
             )
@@ -597,7 +646,16 @@ def ensemble_score_slurm(
         job_file = prepare_job_file(
             parameter_file, sample_nr, settings
         )
-        subprocess.call(['sbatch', job_file])
+        # Detect and use appropriate batch system
+        if shutil.which('sbatch'):
+            subprocess.call(['sbatch', job_file])
+        elif shutil.which('condor_submit'):
+            # For HTCondor, we need to create a .sub file
+            condor_file = job_file.replace('.sh', '.sub')
+            create_condor_submit_file(job_file, condor_file)
+            subprocess.call(['condor_submit', condor_file])
+        else:
+            raise RuntimeError("No batch system found (sbatch or condor_submit)")
         time.sleep(5)
     wait_iteration(output_dir, len(parameter_dicts))
     time.sleep(30)
@@ -624,9 +682,12 @@ def main(output_dir: str, pso_cfg: dict) -> None:
     hyperparameters = read_cfg(pso_cfg["hpconfig"])
     toys=makeTestSet(size=2500, samplesize=pso_cfg['samplesize'], c2glimited=pso_cfg['c2glimited'])
     start=pso_cfg['basis']
-    #ensemble=functools.partial(ensemble_score, toys=toys, start=start)
-    # swarm = pso.ParticleSwarm(ensemble, hyperparameters, **pso_cfg)
-    swarm = pso.ParticleSwarm(ensemble_score_slurm, hyperparameters, pso_cfg)
+    # Choose between local execution or batch (SLURM/HTCondor) based on configuration
+    if pso_cfg.get('use_batch', False) or pso_cfg.get('use_slurm', False):
+        swarm = pso.ParticleSwarm(ensemble_score_slurm, hyperparameters, pso_cfg)
+    else:
+        ensemble=functools.partial(ensemble_score, toys=toys, start=start)
+        swarm = pso.ParticleSwarm(ensemble, hyperparameters, pso_cfg)
     pso_best_parameters, pso_best_fitness = swarm.optimize()
     pso_best_fitness = (pso_best_fitness)*-1
     bestbasis = makebase(pso_best_parameters, start=start)

@@ -1,0 +1,19 @@
+{
+    "iterations": 5,
+    "population_size": 10,
+    "nr_informants": 3,
+    "seed": 1,
+    "basis": [[1, 1, 0, 0, 0],
+              [1, 1, 0.7, 0, 0],
+              [-2.5, 1, 0, 0, 0],
+              [-10, 1, 1, 0, 0],
+              [1, 1, -0.2, 0, -1.2]],
+    "output_dir": "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/pso_test",
+    "pso_file": "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/config/pso_cfg_test.json",
+    "hpconfig": "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/config/mhh_test.json",
+    "c2glimited": 0,
+    "toysize": 100,
+    "samplesize": 1000,
+    "chi2stregth": 2,
+    "statstrenght": 0.5
+}
