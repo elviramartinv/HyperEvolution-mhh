@@ -14,6 +14,6 @@
     "c2glimited": 0,
     "toysize": 100,
     "samplesize": 1000,
-    "chi2stregth": 2,
-    "statstrenght": 0.5
+    "chi2strength": 2,
+    "statstrength": 0.5
 }

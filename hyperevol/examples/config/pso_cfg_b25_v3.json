@@ -28,12 +28,12 @@
 	      [20, 1, 0, 0, 5],
 	      [1.0, 1.0, 1.0, -0.6, 0.6],
 	      [0.0, 0.0, 0.0, 0.0, 1]],
-    "output_dir": "/home/tolange/HyperEvolution/hyperevol/examples/pso_25_v3",
-    "pso_file": "/home/tolange/HyperEvolution/hyperevol/examples/config/pso_cfg_b25_v3.json",
-    "hpconfig": "/home/tolange/HyperEvolution/hyperevol/examples/config/mhh_25_limited.json",
+    "output_dir": "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/pso_25_v3",
+    "pso_file": "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/config/pso_cfg_b25_v3.json",
+    "hpconfig": "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/config/mhh_25_limited.json",
     "c2glimited": 1,
     "toysize": 5000,
     "samplesize": 10000,
-    "ksstregth": 2,
-    "statstrenght": 0.5
+    "chi2strength": 2,
+    "statstrength": 0.5
 }

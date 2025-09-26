@@ -257,8 +257,8 @@ def scoretoy(basis, toy):
     return KS, STAT
 
 # actual score function, maximize this!
-def scorefunc(ks, stat, ksstregth=0.5, statstrenght=0.5):
-    return ksstregth*(math.log(ks)+1) + statstrenght*math.log(1/stat,10)
+def scorefunc(ks, stat, ksstregth=0.5, statstrength=0.5):
+    return ksstregth*(math.log(ks)+1) + statstrength*math.log(1/stat,10)
 
 # score a given basis for all toys
 def scorebasis(basis, toys):

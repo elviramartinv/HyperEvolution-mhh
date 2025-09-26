@@ -309,13 +309,13 @@ def scoretoy(basis, toy, start=[], samplesize=5000):
     return CHI2, STAT
     #return KS, STAT
 
-#def scorefunc(ks, stat, ksstregth=0.5, statstrenght=0.5):
-#    return ksstregth*(math.log(ks)+1) + statstrenght*(-np.power(2,min(stat-1,50)) + 1/(stat+0.0001))
+#def scorefunc(ks, stat, ksstregth=0.5, statstrength=0.5):
+#    return ksstregth*(math.log(ks)+1) + statstrength*(-np.power(2,min(stat-1,50)) + 1/(stat+0.0001))
 
-def scorefunc(chi2, stat, chi2stregth=0.5, statstrenght=0.5):
-    return 1/(chi2stregth*chi2+statstrenght*math.pow(stat,1))
+def scorefunc(chi2, stat, chi2strength=0.5, statstrength=0.5):
+    return 1/(chi2strength*chi2+statstrength*math.pow(stat,1))
 
-def scorebasis(basis, toys, start=[], samplesize=5000, extra=False, chi2stregth=0.5, statstrenght=0.5):
+def scorebasis(basis, toys, start=[], samplesize=5000, extra=False, chi2strength=0.5, statstrength=0.5):
     score = 0
     #avgks = 0
     avgchi2 = 0
@@ -327,13 +327,13 @@ def scorebasis(basis, toys, start=[], samplesize=5000, extra=False, chi2stregth=
         chi2, stat = scoretoy(basis, t, start, samplesize=samplesize)
         avgchi2+=chi2
         avgstat+=stat
-        #score += scorefunc(ks, stat, ksstregth, statstrenght)
-        # score += scorefunc(chi2, stat, chi2stregth, statstrenght)
+        #score += scorefunc(ks, stat, ksstregth, statstrength)
+        # score += scorefunc(chi2, stat, chi2strength, statstrength)
     #score /= len(toys)
     #avgks /= len(toys)
     avgchi2 /= len(toys)
     avgstat /= len(toys)
-    score = scorefunc(avgchi2, avgstat, chi2stregth, statstrenght)
+    score = scorefunc(avgchi2, avgstat, chi2strength, statstrength)
     if extra:
         #return -1*score, avgks, avgstat
         return -1*score, avgchi2, avgstat
@@ -345,7 +345,7 @@ def ensemble_score(
         toys=[],
         start=[],
 ):
-    sb = functools.partial(scorebasis, toys=toys, start=start, samplesize=settings['samplesize'], chi2stregth=settings['chi2stregth'], statstrenght=settings['statstrenght'])
+    sb = functools.partial(scorebasis, toys=toys, start=start, samplesize=settings['samplesize'], chi2strength=settings['chi2strength'], statstrength=settings['statstrength'])
     pool = Pool(processes=25)
     print(len(parameter_dicts))
     out = pool.map(sb, parameter_dicts)
@@ -710,7 +710,7 @@ if __name__ == '__main__':
             hyperparameters = read_json_cfg(parameter_file)
             toys=makeTestSet(size=pso_cfg['toysize'], samplesize=pso_cfg['samplesize'], c2glimited=pso_cfg['c2glimited'])
             start=pso_cfg['basis']
-            score, avgchi2, avgstat = scorebasis(hyperparameters, toys, start, samplesize=pso_cfg['samplesize'], extra=True, chi2stregth=pso_cfg['chi2stregth'], statstrenght=pso_cfg['statstrenght'])
+            score, avgchi2, avgstat = scorebasis(hyperparameters, toys, start, samplesize=pso_cfg['samplesize'], extra=True, chi2strength=pso_cfg['chi2strength'], statstrength=pso_cfg['statstrength'])
             path = Path(parameter_file)
             save_dir = str(path.parent)
             start=pso_cfg['basis']

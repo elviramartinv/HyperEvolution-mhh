@@ -11,7 +11,7 @@ Application of **hyperparameter optimization** algorithms for **HEFT basis optim
 
 **Setup environment automatically:**
    ```bash
-   ./setup_environment.sh
+   source setup_environment.sh
    ```
 
 **Run quick test:**
