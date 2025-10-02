@@ -19,8 +19,3 @@ Application of **hyperparameter optimization** algorithms for **HEFT basis optim
    cd hyperevol/examples
    python mhh_scoring.py -c config/pso_cfg_test.json -p None
    ```
-
-**Run on cluster:**
-   ```bash
-   ./batch/run_batch.sh hyperevol/examples/config/pso_cfg_b23_1.json
-   ```

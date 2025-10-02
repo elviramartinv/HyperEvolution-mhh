@@ -33,5 +33,8 @@
     "toysize": 1000,
     "samplesize": 10000,
     "chi2strength": 2,
-    "statstrength": 0.5
+    "statstrength": 0.5,
+	"use_batch": true,
+	"condor_memory": "2GB",
+    "condor_cpus": 1
 }

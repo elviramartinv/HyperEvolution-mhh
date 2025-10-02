@@ -6,7 +6,7 @@ Usage: mhh_scoring.py --parameter_file=PTH --pso_file=PTH
 
 Options:
     -p --parameter_file=PTH         Path to parameters to be run
-    -c --pso_file=PTH         PSOconfig
+    -c --pso_file=PTH               PSOconfig
 '''
 
 import functools
@@ -169,6 +169,7 @@ def calcDist(kl, kt, c2, cg, c2g, kSM=1.115, samplesize=5000, maxmhh=1050):
         idx = len(mhhs)-mhhs.index(maxmhh)
         mhhsplot = mhhs[:-idx]
         # renormalize...
+        ### xs = xs[:-idx] 
         #xs *= 1/sum(xs)
     random.seed(12345)
     data = random.choices(mhhs[:-1], weights=xs, k=samplesize)
@@ -351,38 +352,7 @@ def ensemble_score(
     out = pool.map(sb, parameter_dicts)
     return out
 
-def create_condor_submit_file(job_script, condor_file):
-    """Creates .sub file for HTCondor based on the job script
-    
-    Parameters:
-    ----------
-    job_script : str
-        Path to the bash script to execute
-    condor_file : str
-        Path where to create the HTCondor .sub file
-    """
-    with open(condor_file, 'w') as f:
-        f.write(f"""
-# HTCondor submit file
-executable = {job_script}
-output = {job_script.replace('.sh', '.out')}
-error = {job_script.replace('.sh', '.err')}
-log = {job_script.replace('.sh', '.log')}
-
-# Recursos
-request_cpus = 1
-request_memory = 2GB
-request_disk = 1GB
-
-# Configuración
-should_transfer_files = YES
-when_to_transfer_output = ON_EXIT
-
-# Enviar trabajo
-queue
-""")
-
-def prepare_job_file(
+def prepare_slurm_job_file(
         parameter_file,
         sample_nr,
         global_settings
@@ -409,12 +379,6 @@ def prepare_job_file(
     output_file = os.path.join(output_dir, 'output' + str(sample_nr))
     run_script = "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/mhh_scoring.py"
     pso_file = global_settings['pso_file']
-    
-    # Obtener configuraciones de SLURM del archivo de configuración
-    slurm_time = global_settings.get('slurm_time', '4:00:00')
-    slurm_cpus = global_settings.get('slurm_cpus', 2)
-    slurm_partition = global_settings.get('slurm_partition', 'wn')
-    
     with open(job_file, 'wt') as filehandle:
         filehandle.writelines(dedent(
             """
@@ -426,26 +390,67 @@ def prepare_job_file(
                 #SBATCH --cpus-per-task=%s
                 #SBATCH -e %s
                 #SBATCH -o %s
-                
-                echo "Starting job at $(date)"
-                echo "Running on $(hostname)"
-                
-                # Cargar entorno
                 source /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/Hopt/bin/activate
                 source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.36.04/x86_64-almalinux9.6-gcc115-opt/bin/thisroot.sh
-                
-                # Ejecutar script
                 cd /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples
                 python3 %s --parameter_file %s --pso_file %s
                 
                 echo "Job finished at $(date)"
             """ % (
-                    slurm_partition, slurm_time, slurm_cpus,
                     error_file, output_file, run_script,
                     parameter_file, pso_file
             )
         ).strip('\n'))
     return job_file
+
+def prepare_condor_job_files(parameter_file, sample_nr, global_settings):
+    """Writes HTCondor job files (.sh script + .sub file)"""
+    output_dir = os.path.expandvars(global_settings['output_dir'])
+    job_script = os.path.join(output_dir, 'parameter_' + str(sample_nr) + '.sh')
+    condor_file = os.path.join(output_dir, 'parameter_' + str(sample_nr) + '.sub')
+    run_script = "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/mhh_scoring.py"
+    pso_file = global_settings['pso_file']
+    
+    # Create executable script
+    with open(job_script, 'wt') as f:
+        f.write(f"""#!/bin/bash
+            echo "Starting HTCondor job at $(date)"
+            echo "Running on $(hostname)"
+
+            # Load environment
+            source /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/Hopt/bin/activate
+            source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.36.04/x86_64-almalinux9.6-gcc115-opt/bin/thisroot.sh
+
+            # Execute script
+            cd /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples
+            python3 {run_script} --parameter_file {parameter_file} --pso_file {pso_file}
+
+            echo "Job finished at $(date)"
+            """)
+    
+    os.chmod(job_script, 0o755)
+    
+    condor_memory = global_settings.get('condor_memory', '2GB')
+    condor_cpus = global_settings.get('condor_cpus', 1)
+    
+    with open(condor_file, 'wt') as f:
+        f.write(f"""# HTCondor submit file
+            executable = {job_script}
+            output = {job_script.replace('.sh', '.out')}
+            error = {job_script.replace('.sh', '.err')}
+            log = {job_script.replace('.sh', '.log')}
+
+            request_cpus = {condor_cpus}
+            request_memory = {condor_memory}
+            request_disk = 1GB
+
+            should_transfer_files = YES
+            when_to_transfer_output = ON_EXIT
+
+            queue
+            """)
+    
+    return condor_file
 
 def read_json_cfg(path):
     """ Reads the json info from a given path
@@ -630,7 +635,7 @@ def get_sample_nr(path):
     sample_nr = int(parent_path.split('/')[-1])
     return sample_nr
 
-def ensemble_score_slurm(
+def ensemble_score_batch(
         parameter_dicts,
         settings,
 ):
@@ -643,16 +648,11 @@ def ensemble_score_slurm(
         output_dir, 'samples', '*', 'parameters.json')
     for parameter_file in glob.glob(wild_card_path):
         sample_nr = get_sample_nr(parameter_file)
-        job_file = prepare_job_file(
-            parameter_file, sample_nr, settings
-        )
-        # Detect and use appropriate batch system
         if shutil.which('sbatch'):
+            job_file = prepare_slurm_job_file(parameter_file, sample_nr, settings)
             subprocess.call(['sbatch', job_file])
         elif shutil.which('condor_submit'):
-            # For HTCondor, we need to create a .sub file
-            condor_file = job_file.replace('.sh', '.sub')
-            create_condor_submit_file(job_file, condor_file)
+            condor_file = prepare_condor_job_files(parameter_file, sample_nr, settings)
             subprocess.call(['condor_submit', condor_file])
         else:
             raise RuntimeError("No batch system found (sbatch or condor_submit)")
@@ -682,9 +682,9 @@ def main(output_dir: str, pso_cfg: dict) -> None:
     hyperparameters = read_cfg(pso_cfg["hpconfig"])
     toys=makeTestSet(size=2500, samplesize=pso_cfg['samplesize'], c2glimited=pso_cfg['c2glimited'])
     start=pso_cfg['basis']
-    # Choose between local execution or batch (SLURM/HTCondor) based on configuration
-    if pso_cfg.get('use_batch', False) or pso_cfg.get('use_slurm', False):
-        swarm = pso.ParticleSwarm(ensemble_score_slurm, hyperparameters, pso_cfg)
+    # Choose between local execution or batch based on configuration
+    if pso_cfg.get('use_batch', False):
+        swarm = pso.ParticleSwarm(ensemble_score_batch, hyperparameters, pso_cfg)
     else:
         ensemble=functools.partial(ensemble_score, toys=toys, start=start)
         swarm = pso.ParticleSwarm(ensemble, hyperparameters, pso_cfg)
@@ -702,7 +702,8 @@ if __name__ == '__main__':
     try:
         arguments = docopt.docopt(__doc__)
         parameter_file = arguments['--parameter_file']
-        pso_cfg = read_cfg(arguments['--pso_file'])
+        pso_file = arguments['--pso_file']
+        pso_cfg = read_cfg(pso_file)
         output_dir=pso_cfg['output_dir']
         if "parameters" not in parameter_file:
             main(output_dir, pso_cfg)
