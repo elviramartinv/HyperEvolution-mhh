@@ -140,7 +140,7 @@ def diagnose_target_integration(basis_points, target_point, coeffs, tol=1e-8):
         else:
             print("Convex hull check: Target is OUTSIDE the convex hull of the basis points (extrapolation).")
     except Exception as e:
-        print(f"[Geométrico] No se pudo calcular el convex hull: {e}")
+        print(f"Convex hull check could not be performed: {e}")
     # Algebraic (coefficients)
     min_coeff = np.min(coeffs)
     max_coeff = np.max(coeffs)
@@ -148,9 +148,9 @@ def diagnose_target_integration(basis_points, target_point, coeffs, tol=1e-8):
     all_positive = np.all(coeffs >= -tol)
     print(f"Coeffs: Min: {min_coeff:.3g}, Max: {max_coeff:.3g}, Sum: {sum_coeff:.5f}")
     if all_positive and abs(sum_coeff - 1) < 1e-1:
-        print("Coeffs: All coefficients are positive and sum to 1: INTERPOLATION.")
+        print("Coeffs: All coefficients are positive and sum to 1")
     else:
-        print("Coeffs: There are negative coefficients or the sum differs from 1: EXTRAPOLATION.")
+        print("Coeffs: There are negative coefficients or the sum differs from 1")
     print("---\n")
 
 # Path to all basis points' HH_variables folders
