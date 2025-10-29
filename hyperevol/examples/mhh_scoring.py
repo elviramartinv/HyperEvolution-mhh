@@ -2,11 +2,16 @@
 size for 1000 repeats each optimization consists out of 10k total evaluations.
 Call with 'python'
 
-Usage: mhh_scoring.py --parameter_file=PTH --pso_file=PTH
+Usage: 
+    mhh_scoring.py [--parameter_file=PTH] --pso_file=PTH
+    mhh_scoring.py --resume=DIR
+    mhh_scoring.py --monitor=DIR
 
 Options:
     -p --parameter_file=PTH         Path to parameters to be run
     -c --pso_file=PTH               PSOconfig
+    --resume=DIR                    Resume interrupted session from directory
+    --monitor=DIR                   Monitor running jobs in directory
 '''
 
 import functools
@@ -19,7 +24,7 @@ import os
 import json
 import docopt
 import numpy as np
-from helper import read_cfg, save_results
+from hyperevol.examples.helper import read_cfg, save_results
 from hyperevol.tools import particle_swarm as pso
 from array import array
 import glob
@@ -29,6 +34,8 @@ import subprocess
 import time
 import shutil
 import json
+import signal
+import sys
 
 # theocoeffs_old = [
 #     [260.0, 0.0017041787836573525, 0.005859941413819426, 0.0011203511856240794, 0.0016326884261615745, 0.008528140326909796, -0.006294287901387375, -0.0027595385750596247, 0.005164913330395372, 0.006125179428023181, 0.014085783164070144, -0.003248623424659433, -0.00763769577847725, 0.0027011050795191375, 0.00623898517945767, 0.0075008431622157114, -4.0952526946401604e-05, 0.0002299913340205693, 9.768993003289037e-05, 0.0002359846439272683, -0.00010543564692487495, 0.00010874309248669732, 4.9999866115412877e-05, 0.00020776372612401524],
@@ -340,117 +347,553 @@ def scorebasis(basis, toys, start=[], samplesize=5000, extra=False, chi2strength
         return -1*score, avgchi2, avgstat
     return  -1*score
 
+def create_optimized_batch_script(output_dir, particles_per_job, pso_cfg):
+    """Creates an optimized shell script that uses $(Process) to determine which particles to process
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    particles_per_job : int
+        Number of particles each job should process
+    pso_cfg : dict
+        PSO configuration dictionary
+    
+    Returns:
+    -------
+    script_path : str
+        Path to the created script file
+    """
+    import os
+    cpus = pso_cfg.get('condor_cpus', 4)
+    script_content = f"""#!/bin/bash
+# Optimized batch script using Condor's $(Process) variable
+cd /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh
+source setup_environment.sh > /dev/null 2>&1
+cd hyperevol/examples
+
+# Get job ID from Condor's Process variable (passed as argument)
+job_id=$1
+particles_per_job={particles_per_job}
+
+# Calculate which particles this job should process
+start_particle=$((job_id * particles_per_job))
+end_particle=$((start_particle + particles_per_job - 1))
+
+echo "Job $job_id processing particles $start_particle to $end_particle"
+
+export START_PARTICLE=$start_particle
+export END_PARTICLE=$end_particle
+
+python - <<EOF
+import os
+import multiprocessing as mp
+import subprocess
+
+def evaluate_particle(particle_id):
+    param_path = os.path.join("{os.path.basename(output_dir)}", "samples", str(particle_id), "parameters.json")
+    if os.path.isfile(param_path):
+        subprocess.run(["python", "mhh_scoring.py", "-c", "{pso_cfg['pso_file']}", "-p", param_path])
+    else:
+        print(f"Particle {{particle_id}} not found, skipping")
+if __name__ == "__main__":
+    start = int(os.environ.get("START_PARTICLE", 0))
+    end = int(os.environ.get("END_PARTICLE", 0))
+    particle_ids = list(range(start, end + 1))
+
+    with mp.Pool(processes={cpus}) as pool:
+        pool.map(evaluate_particle, particle_ids)
+
+EOF
+
+echo "Job $job_id completed"
+"""
+    
+    script_path = os.path.join(output_dir, 'optimized_batch.sh')
+    with open(script_path, 'w') as file:
+        file.write(script_content)
+    os.chmod(script_path, 0o755)  # Make executable
+    return script_path
+
+def create_optimized_submit_file(output_dir, script_path, total_jobs, pso_cfg):
+    import os
+    os.makedirs(os.path.join(output_dir, 'logs'), exist_ok=True)
+    """Creates an optimized Condor submit file using queue N for multiple jobs
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    script_path : str
+        Path to the shell script to execute
+    total_jobs : int
+        Total number of jobs to queue
+    pso_cfg : dict
+        PSO configuration dictionary
+    
+    Returns:
+    -------
+    submit_file_path : str
+        Path to the created submit file
+    """
+    # Get resource requirements from config
+    cpus = pso_cfg.get('condor_cpus', 4)
+    memory = pso_cfg.get('condor_memory', '4GB')
+    max_runtime = pso_cfg.get('condor_max_runtime', '86400')
+    
+    submit_content = f"""universe = vanilla
+executable = {script_path}
+arguments = $(Process)
+
+# Resource requirements per job
+request_cpus = {cpus}
+request_memory = {memory}
++MaxRuntime = {max_runtime}
+
+# Logs with Process ID for each job
+output = {output_dir}/logs/job_$(Process).out
+error = {output_dir}/logs/job_$(Process).err
+log = {output_dir}/logs/job_$(Process).log
+
+# Queue multiple jobs in one cluster
+queue {total_jobs}
+"""
+    
+    submit_file_path = os.path.join(output_dir, 'optimized_batch.sub')
+    with open(submit_file_path, 'w') as file:
+        file.write(submit_content)
+    return submit_file_path
+
+def cleanup_iteration_files(output_dir, iteration_nr=None, pso_cfg=None):
+    """Clean up temporary files from previous iteration with configurable log retention
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    iteration_nr : int, optional
+        Iteration number for selective cleanup
+    pso_cfg : dict, optional
+        Configuration dictionary with log management options
+    """
+    # Get log management settings
+    keep_logs = pso_cfg.get('keep_iteration_logs', True) if pso_cfg else True
+    keep_recent_iterations = pso_cfg.get('keep_recent_iterations', 5) if pso_cfg else 5
+    compress_logs = pso_cfg.get('compress_logs', False) if pso_cfg else False
+    
+    # Move or clean logs from current iteration
+    if iteration_nr is not None:
+        if keep_logs:
+            iter_logs_dir = os.path.join(output_dir, 'logs', f'iteration_{iteration_nr}')
+            os.makedirs(iter_logs_dir, exist_ok=True)
+            
+            # Move current logs to iteration directory
+            for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.out')):
+                shutil.move(log_file, iter_logs_dir)
+            for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.err')):
+                shutil.move(log_file, iter_logs_dir)
+            for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.log')):
+                shutil.move(log_file, iter_logs_dir)
+                
+            # Compress old logs if requested
+            if compress_logs and iteration_nr > 0:
+                old_iter_dir = os.path.join(output_dir, 'logs', f'iteration_{iteration_nr-1}')
+                if os.path.exists(old_iter_dir):
+                    import tarfile
+                    tar_file = os.path.join(output_dir, 'logs', f'iteration_{iteration_nr-1}.tar.gz')
+                    with tarfile.open(tar_file, 'w:gz') as tar:
+                        tar.add(old_iter_dir, arcname=f'iteration_{iteration_nr-1}')
+                    shutil.rmtree(old_iter_dir)
+                    print(f"Compressed logs for iteration {iteration_nr-1}")
+            
+            # Remove very old logs to keep only recent iterations
+            if keep_recent_iterations > 0 and iteration_nr >= keep_recent_iterations:
+                old_iteration = iteration_nr - keep_recent_iterations
+                old_iter_dir = os.path.join(output_dir, 'logs', f'iteration_{old_iteration}')
+                old_tar_file = os.path.join(output_dir, 'logs', f'iteration_{old_iteration}.tar.gz')
+                
+                if os.path.exists(old_iter_dir):
+                    shutil.rmtree(old_iter_dir)
+                    print(f"Removed old logs for iteration {old_iteration}")
+                if os.path.exists(old_tar_file):
+                    os.remove(old_tar_file)
+                    print(f"Removed compressed logs for iteration {old_iteration}")
+        else:
+            # Delete logs immediately if not keeping them
+            for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.out')):
+                os.remove(log_file)
+            for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.err')):
+                os.remove(log_file)
+            for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.log')):
+                os.remove(log_file)
+    
+    # Always remove script and submit files
+    for script_file in glob.glob(os.path.join(output_dir, 'batch_*.sh')):
+        os.remove(script_file)
+    for submit_file in glob.glob(os.path.join(output_dir, 'batch_*.sub')):
+        os.remove(submit_file)
+    for script_file in glob.glob(os.path.join(output_dir, 'parameter_*.sh')):
+        os.remove(script_file)
+    for submit_file in glob.glob(os.path.join(output_dir, 'submit_*.sub')):
+        os.remove(submit_file)
+
+def submit_condor_jobs(output_dir, parameter_dicts, pso_cfg):
+    """Submits parameter evaluation jobs to Condor with optimized batching using queue N
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    parameter_dicts : list
+        List of parameter dictionaries to evaluate
+    pso_cfg : dict
+        PSO configuration dictionary
+    
+    Returns:
+    -------
+    job_ids : list
+        List of Condor job IDs (will contain single cluster ID)
+    """
+    population_size = len(parameter_dicts)
+    particles_per_job = pso_cfg.get("max_batch_size", 10)
+    total_jobs = (population_size + particles_per_job - 1) // particles_per_job
+    
+    # Create logs directory
+    # logs_dir = os.path.join(output_dir, 'logs')
+    # os.makedirs(logs_dir, exist_ok=True)
+    
+    print(f"Using {particles_per_job} particles per job for {population_size} evaluations")
+    print(f"This will create 1 Condor cluster with {total_jobs} jobs")
+    
+    # Save parameters to files first
+    parameters_to_file(output_dir, parameter_dicts)
+    
+    # Create optimized batch script and submit file
+    script_path = create_optimized_batch_script(output_dir, particles_per_job, pso_cfg)
+    submit_file_path = create_optimized_submit_file(output_dir, script_path, total_jobs, pso_cfg)
+    
+    # Submit the entire batch as one cluster
+    result = subprocess.run(['condor_submit', submit_file_path], 
+                          capture_output=True, text=True)
+    # Pausa para evitar saturar el sistema
+    import time
+    time.sleep(10)  # Espera 10 segundos tras cada envío
+    
+    if result.returncode == 0:
+        # Extract cluster ID from output
+        for line in result.stdout.split('\n'):
+            if 'submitted to cluster' in line:
+                cluster_id = line.split('cluster ')[1].split('.')[0]
+                print(f"Submitted cluster {cluster_id} with {total_jobs} jobs ({cluster_id}.0-{total_jobs-1})")
+                return [cluster_id]  # Return as list for compatibility
+    else:
+        print(f"Failed to submit batch: {result.stderr}")
+        raise RuntimeError(f"Condor submission failed for optimized batch")
+    
+    return []
+
+def setup_signal_handlers(output_dir):
+    """Setup signal handlers for graceful interruption handling
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    """
+    def signal_handler(signum, frame):
+        print("Interrupted")
+        session_file = os.path.join(output_dir, '.session_state.json')
+        if os.path.exists(session_file):
+            print(f"Session state saved in {session_file}")
+            print(f"To resume: python mhh_scoring.py --resume {output_dir}")
+            print(f"To monitor: python mhh_scoring.py --monitor {output_dir}")
+        print("Exiting...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # Termination
+
+def save_session_state(output_dir, iteration, job_ids, population_size, pso_cfg):
+    """Save current session state for recovery after disconnection
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    iteration : int
+        Current iteration number
+    job_ids : list
+        List of active Condor job IDs
+    population_size : int
+        Expected number of completed jobs
+    pso_cfg : dict
+        PSO configuration dictionary
+    """
+    session_state = {
+        'iteration': iteration,
+        'job_ids': job_ids,
+        'population_size': population_size,
+        'pso_config': pso_cfg,
+        'timestamp': time.time(),
+        'status': 'waiting_for_jobs'
+    }
+    
+    session_file = os.path.join(output_dir, '.session_state.json')
+    with open(session_file, 'w') as f:
+        json.dump(session_state, f, indent=2)
+    
+    print(f"   Session state saved. Recovery options:")
+    print(f"   Resume: python mhh_scoring.py --resume {output_dir}")
+    print(f"   Monitor: python mhh_scoring.py --monitor {output_dir}")
+
+def load_session_state(output_dir):
+    """Load session state for recovery
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+        
+    Returns:
+    -------
+    session_state : dict or None
+        Loaded session state or None if no valid session
+    """
+    session_file = os.path.join(output_dir, '.session_state.json')
+    
+    if not os.path.exists(session_file):
+        return None
+        
+    try:
+        with open(session_file, 'r') as f:
+            session_state = json.load(f)
+        
+        # Check if session is recent (within 24 hours)
+        if time.time() - session_state.get('timestamp', 0) > 86400:
+            print("Session state is too old (>24h), starting fresh")
+            os.remove(session_file)
+            return None
+            
+        return session_state
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"Corrupted session file, starting fresh: {e}")
+        os.remove(session_file)
+        return None
+
+def resume_session(output_dir):
+    """Resume a previously interrupted session
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+        
+    Returns:
+    -------
+    success : bool
+        Whether resume was successful
+    """
+    session_state = load_session_state(output_dir)
+    if not session_state:
+        print("No valid session found to resume")
+        return False
+    
+    print(f"Resuming session from iteration {session_state['iteration']}")
+    print(f"Monitoring {len(session_state['job_ids'])} Condor jobs...")
+    
+    # Wait for the jobs from the interrupted session
+    try:
+        wait_for_condor_jobs(output_dir, session_state['job_ids'], session_state['population_size'])
+        
+        # Clean up session file
+        session_file = os.path.join(output_dir, '.session_state.json')
+        if os.path.exists(session_file):
+            os.remove(session_file)
+            
+        print("Session resumed successfully. You can now restart the main script.")
+        return True
+    except Exception as e:
+        print(f"Failed to resume session: {e}")
+        return False
+
+def wait_for_condor_jobs(output_dir, job_ids, population_size):
+    """Waits for all Condor jobs to complete and checks for errors
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    job_ids : list
+        List of Condor job IDs to wait for
+    population_size : int
+        Expected number of completed jobs
+    
+    Returns:
+    -------
+    Nothing
+    """
+    print(f"Waiting for {len(job_ids)} Condor jobs to complete...")
+    
+    check_interval = 10  # Start with 10 seconds
+    max_interval = 60    # Maximum wait time between checks
+    last_progress_time = time.time()
+    progress_interval = 60  # 5 minutos
+    
+    while True:
+        # Check if all score files are present
+        wild_card_path = os.path.join(output_dir, 'samples', '*', 'score.json')
+        completed_jobs = len(glob.glob(wild_card_path))
+        
+        if completed_jobs == population_size:
+            print(f"All {population_size} jobs completed successfully!")
+            break
+            
+        # Check for errors in error files (check logs directory)
+        try:
+            check_error_in_logs(output_dir)
+        except SystemExit:
+            # If errors found, still try to continue with partial results
+            print(f"Some jobs failed, but continuing with {completed_jobs} completed jobs")
+            if completed_jobs < population_size * 0.8:  # If less than 80% completed
+                raise RuntimeError(f"Too many jobs failed: only {completed_jobs}/{population_size} completed")
+            break
+        
+        # Check job status using condor_q (works for both individual jobs and clusters)
+        still_running = []
+        running_subjobs = 0
+        for job_id in job_ids:
+            result = subprocess.run(['condor_q', job_id], 
+                                  capture_output=True, text=True)
+            if job_id in result.stdout:
+                still_running.append(job_id)
+                # Count how many subjobs are running if this is a cluster
+                for line in result.stdout.split('\n'):
+                    if job_id in line and 'RUN' in line:
+                        running_subjobs += 1
+        
+        # Show periodic progress updates
+        current_time = time.time()
+        if current_time - last_progress_time > progress_interval:
+            if len(job_ids) == 1:  # Single cluster
+                print(f"⏳ Progress: {completed_jobs}/{population_size} completed, cluster {job_ids[0]} running")
+            else:  # Multiple jobs/clusters
+                print(f"⏳ Progress: {completed_jobs}/{population_size} completed, {len(still_running)} jobs running")
+            last_progress_time = current_time
+        
+        if still_running:
+            # if len(job_ids) == 1:  # Single cluster
+            #     print(f"Still waiting for cluster {job_ids[0]}. Completed: {completed_jobs}/{population_size}")
+            # else:
+            #     print(f"Still waiting for {len(still_running)} jobs. Completed: {completed_jobs}/{population_size}")
+            # Increase check interval for large jobs
+            if len(job_ids) > 100:
+                check_interval = min(max_interval, check_interval + 5)
+        else:
+            # All jobs finished according to condor_q, but files might not be ready yet
+            print(f"All jobs finished. Completed files: {completed_jobs}/{population_size}")
+            # Give some extra time for file system sync
+            if completed_jobs < population_size:
+                time.sleep(5)
+                continue
+            
+        time.sleep(check_interval)
+
+def check_error_in_logs(output_dir):
+    """Enhanced error checking that looks in the logs directory
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    """
+    number_errors = 0
+    error_list = ['FAILED', 'CANCELLED', 'ERROR', 'Error', 'Traceback']
+    
+    # Check in both main directory and logs directory
+    error_patterns = [
+        os.path.join(output_dir, 'error*'),
+        os.path.join(output_dir, 'logs', '*err'),
+        os.path.join(output_dir, 'logs', '*out')  # Sometimes errors go to stdout
+    ]
+    
+    for pattern in error_patterns:
+        for error_file in glob.glob(pattern):
+            if os.path.exists(error_file) and os.path.getsize(error_file) > 0:
+                with open(error_file, 'rt') as file:
+                    content = file.read()
+                    for error in error_list:
+                        if error in content:
+                            number_errors += 1
+                            print(f"Error found in {error_file}")
+                            break
+    
+    if number_errors > 0:
+        print(f"Found errors in {number_errors} files")
+        # Don't exit immediately for batch jobs, let caller decide
+
 def ensemble_score(
         parameter_dicts,
         settings=None,
         toys=[],
         start=[],
 ):
-    sb = functools.partial(scorebasis, toys=toys, start=start, samplesize=settings['samplesize'], chi2strength=settings['chi2strength'], statstrength=settings['statstrength'])
-    pool = Pool(processes=25)
-    print(len(parameter_dicts))
-    out = pool.map(sb, parameter_dicts)
-    return out
-
-def prepare_slurm_job_file(
-        parameter_file,
-        sample_nr,
-        global_settings
-):
-    """Writes the job file that will be executed by batch system
-
-    Parameters:
-    ----------
-    parameter_file : str
-        Path to the parameter file
-    sample_nr : int
-        Number of the sample (parameter-set)
-    global_settings : dict
-        Global settings for the run
-
-    Returns:
-    -------
-    job_file : str
-        Path to the script to be executed by slurm
-    """
-    output_dir = os.path.expandvars(global_settings['output_dir'])
-    job_file = os.path.join(output_dir, 'parameter_' + str(sample_nr) + '.sh')
-    error_file = os.path.join(output_dir, 'error' + str(sample_nr))
-    output_file = os.path.join(output_dir, 'output' + str(sample_nr))
-    run_script = "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/mhh_scoring.py"
-    pso_file = global_settings['pso_file']
-    with open(job_file, 'wt') as filehandle:
-        filehandle.writelines(dedent(
-            """
-                #!/bin/bash
-                #SBATCH --job-name=mhh-opt
-                #SBATCH --partition=%s
-                #SBATCH --ntasks=1
-                #SBATCH --time=%s
-                #SBATCH --cpus-per-task=%s
-                #SBATCH -e %s
-                #SBATCH -o %s
-                source /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/Hopt/bin/activate
-                source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.36.04/x86_64-almalinux9.6-gcc115-opt/bin/thisroot.sh
-                cd /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples
-                python3 %s --parameter_file %s --pso_file %s
-                
-                echo "Job finished at $(date)"
-            """ % (
-                    error_file, output_file, run_script,
-                    parameter_file, pso_file
-            )
-        ).strip('\n'))
-    return job_file
-
-def prepare_condor_job_files(parameter_file, sample_nr, global_settings):
-    """Writes HTCondor job files (.sh script + .sub file)"""
-    output_dir = os.path.expandvars(global_settings['output_dir'])
-    job_script = os.path.join(output_dir, 'parameter_' + str(sample_nr) + '.sh')
-    condor_file = os.path.join(output_dir, 'parameter_' + str(sample_nr) + '.sub')
-    run_script = "/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples/mhh_scoring.py"
-    pso_file = global_settings['pso_file']
-    
-    # Create executable script
-    with open(job_script, 'wt') as f:
-        f.write(f"""#!/bin/bash
-            echo "Starting HTCondor job at $(date)"
-            echo "Running on $(hostname)"
-
-            # Load environment
-            source /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/Hopt/bin/activate
-            source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.36.04/x86_64-almalinux9.6-gcc115-opt/bin/thisroot.sh
-
-            # Execute script
-            cd /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/hyperevol/examples
-            python3 {run_script} --parameter_file {parameter_file} --pso_file {pso_file}
-
-            echo "Job finished at $(date)"
-            """)
-    
-    os.chmod(job_script, 0o755)
-    
-    condor_memory = global_settings.get('condor_memory', '2GB')
-    condor_cpus = global_settings.get('condor_cpus', 1)
-    
-    with open(condor_file, 'wt') as f:
-        f.write(f"""# HTCondor submit file
-            executable = {job_script}
-            output = {job_script.replace('.sh', '.out')}
-            error = {job_script.replace('.sh', '.err')}
-            log = {job_script.replace('.sh', '.log')}
-
-            request_cpus = {condor_cpus}
-            request_memory = {condor_memory}
-            request_disk = 1GB
-
-            should_transfer_files = YES
-            when_to_transfer_output = ON_EXIT
-
-            queue
-            """)
-    
-    return condor_file
+    # Check if batch mode is enabled
+    if settings and settings.get('use_batch', False):
+        population_size = len(parameter_dicts)
+        print(f"Running {population_size} evaluations...")
+        
+        # Get current iteration number for cleanup management
+        iteration_nr = getattr(ensemble_score, 'current_iteration', 0)
+        ensemble_score.current_iteration = iteration_nr + 1
+        
+        # Clean up files from previous iteration (if not first iteration)
+        if iteration_nr > 0:
+            cleanup_iteration_files(settings['output_dir'], iteration_nr - 1, settings)
+        # Submit jobs to Condor with intelligent batching
+        job_ids = submit_condor_jobs(settings['output_dir'], parameter_dicts, settings)
+        # Save session state for recovery
+        save_session_state(settings['output_dir'], iteration_nr, job_ids, population_size, settings)
+        try:
+            # Wait for all jobs to complete
+            wait_for_condor_jobs(settings['output_dir'], job_ids, population_size)
+            # Read results from files
+            scores = read_fitness(settings['output_dir'], fitness_key="fitness")
+        except Exception as e:
+            print(f"[WARNING] Iteration ended with error or timeout: {e}")
+            scores = read_fitness(settings['output_dir'], fitness_key="fitness")
+        finally:
+            # Guardar archivos globales de la iteración actual en previous_iterations
+            previous_files_dir = os.path.join(settings['output_dir'], 'previous_iterations')
+            move_previous_files(settings['output_dir'], previous_files_dir)
+            print(f"[INFO] Iteration {iteration_nr} results saved in {previous_files_dir}/iteration_{iteration_nr}/")
+            # Clean up current iteration files (but keep logs according to config)
+            cleanup_iteration_files(settings['output_dir'], iteration_nr, settings)
+        return scores
+        
+        # Submit jobs to Condor with intelligent batching
+        job_ids = submit_condor_jobs(settings['output_dir'], parameter_dicts, settings)
+        
+        # Save session state for recovery
+        save_session_state(settings['output_dir'], iteration_nr, job_ids, population_size, settings)
+        
+        try:
+            # Wait for all jobs to complete
+            wait_for_condor_jobs(settings['output_dir'], job_ids, population_size)
+            # Read results from files
+            scores = read_fitness(settings['output_dir'], fitness_key="fitness")
+        except Exception as e:
+            print(f"[WARNING] Iteration ended with error or timeout: {e}")
+            scores = read_fitness(settings['output_dir'], fitness_key="fitness")
+        finally:
+            # Clean up current iteration files (but keep logs according to config)
+            cleanup_iteration_files(settings['output_dir'], iteration_nr, settings)
+        return scores
+    else:
+        sb = functools.partial(scorebasis, toys=toys, start=start, samplesize=settings['samplesize'], chi2strength=settings['chi2strength'], statstrength=settings['statstrength'])
+        pool = Pool(processes=25)
+        print(len(parameter_dicts))
+        out = pool.map(sb, parameter_dicts)
+        return out
 
 def read_json_cfg(path):
     """ Reads the json info from a given path
@@ -534,26 +977,6 @@ def check_error(output_dir):
         print("Found errors: " + str(number_errors))
         raise SystemExit(0)
 
-def wait_iteration(output_dir, sample_size):
-    """Waits until all batch jobs are finised and in case of and warning
-    or error that appears in the error file, stops running the optimization
-
-    Parameters:
-    ----------
-    output_dir : str
-        Path to the directory of output
-    sample_size : int
-        Number of particles (parameter-sets)
-
-    Returns:
-    -------
-    Nothing
-    """
-    wild_card_path = os.path.join(output_dir, 'samples', '*', 'score.json')
-    while len(glob.glob(wild_card_path)) != sample_size:
-        check_error(output_dir)
-        time.sleep(5)
-
 def move_previous_files(output_dir, previous_files_dir):
     """Deletes the files from previous iteration
 
@@ -569,7 +992,16 @@ def move_previous_files(output_dir, previous_files_dir):
     iter_nr = find_iter_number(previous_files_dir)
     samples_dir = os.path.join(output_dir, 'samples')
     iter_dir = os.path.join(previous_files_dir, 'iteration_' + str(iter_nr))
-    shutil.copytree(samples_dir, iter_dir)
+    samples_dst = os.path.join(iter_dir, 'samples')
+    shutil.copytree(samples_dir, samples_dst)
+    fitness_src = os.path.join(output_dir, 'fitness.json')
+    fitness_dst = os.path.join(iter_dir, 'fitness.json')
+    if os.path.exists(fitness_src):
+        shutil.copy2(fitness_src, fitness_dst)
+    optimal_src = os.path.join(output_dir, 'optimal_parameters.json')
+    optimal_dst = os.path.join(iter_dir, 'optimal_parameters.json')
+    if os.path.exists(optimal_src):
+        shutil.copy2(optimal_src, optimal_dst)
     shutil.rmtree(samples_dir)
     wild_card_path = os.path.join(output_dir, 'parameter_*.sh')
     for path in glob.glob(wild_card_path):
@@ -619,75 +1051,44 @@ def parameters_to_file(output_dir, hyperparameter_sets):
         with open(parameter_file, 'w') as file:
             json.dump(parameter_dict, file)
 
-def get_sample_nr(path):
-    """Extracts the sample number from a given path
-
-    Parameters:
-    ----------
-    path : str
-        Path to the sample
-
-    Returns : int
-        Number of the sample
-    """
-    path1 = Path(path)
-    parent_path = str(path1.parent)
-    sample_nr = int(parent_path.split('/')[-1])
-    return sample_nr
-
-def ensemble_score_batch(
-        parameter_dicts,
-        settings,
-):
-    output_dir = os.path.expandvars(settings['output_dir'])
-    previous_files_dir = os.path.join(output_dir, 'previous_files')
-    if not os.path.exists(previous_files_dir):
-        os.makedirs(previous_files_dir)
-    parameters_to_file(output_dir, parameter_dicts)
-    wild_card_path = os.path.join(
-        output_dir, 'samples', '*', 'parameters.json')
-    for parameter_file in glob.glob(wild_card_path):
-        sample_nr = get_sample_nr(parameter_file)
-        if shutil.which('sbatch'):
-            job_file = prepare_slurm_job_file(parameter_file, sample_nr, settings)
-            subprocess.call(['sbatch', job_file])
-        elif shutil.which('condor_submit'):
-            condor_file = prepare_condor_job_files(parameter_file, sample_nr, settings)
-            subprocess.call(['condor_submit', condor_file])
-        else:
-            raise RuntimeError("No batch system found (sbatch or condor_submit)")
-        time.sleep(5)
-    wait_iteration(output_dir, len(parameter_dicts))
-    time.sleep(30)
-    scores = read_fitness(output_dir)
-    move_previous_files(output_dir, previous_files_dir)
-    return scores
-
 def main(output_dir: str, pso_cfg: dict) -> None:
-    ''' Runs the particle swarm optimization to optimize the Rosenbrock function
+    ''' Runs the particle swarm optimization to optimize the mHH function
     and saves the result to a file in the specified folder.
-        Since no additional parameters need to be given to the Rosenbrock fn,
-    then no additional 'settings=xyz' will be specified for PSO here.
-        After optimization, the other logging info (e.g. score evolution) can
-    be accessed easily by e.g "swarm.global_bests"
+    
+    Supports both local multiprocessing and Condor batch system execution
+    based on the 'use_batch' parameter in the configuration.
 
     Args:
         output_dir : str
             The directory where the output will be written
+        pso_cfg : dict
+            PSO configuration dictionary containing all parameters
 
     Returns:
         None
     '''
     os.makedirs(output_dir, exist_ok=True)
+    
+    # Check if batch mode is enabled and clean up previous files if needed
+    if pso_cfg.get('use_batch', False):
+        print("Batch mode enabled")
+        setup_signal_handlers(output_dir)
+        # Create previous files directory for iterations tracking
+        previous_files_dir = os.path.join(output_dir, 'previous_iterations')
+        os.makedirs(previous_files_dir, exist_ok=True)
+        pso_cfg['previous_files_dir'] = previous_files_dir
+        
+    else:
+        print("Local mode enabled")
+    
     hyperparameters = read_cfg(pso_cfg["hpconfig"])
     toys=makeTestSet(size=2500, samplesize=pso_cfg['samplesize'], c2glimited=pso_cfg['c2glimited'])
     start=pso_cfg['basis']
-    # Choose between local execution or batch based on configuration
-    if pso_cfg.get('use_batch', False):
-        swarm = pso.ParticleSwarm(ensemble_score_batch, hyperparameters, pso_cfg)
-    else:
-        ensemble=functools.partial(ensemble_score, toys=toys, start=start)
-        swarm = pso.ParticleSwarm(ensemble, hyperparameters, pso_cfg)
+    
+    # Create ensemble function that includes toys and start parameters
+    ensemble=functools.partial(ensemble_score, toys=toys, start=start)
+    
+    swarm = pso.ParticleSwarm(ensemble, hyperparameters, pso_cfg)
     pso_best_parameters, pso_best_fitness = swarm.optimize()
     pso_best_fitness = (pso_best_fitness)*-1
     bestbasis = makebase(pso_best_parameters, start=start)
@@ -698,14 +1099,70 @@ def main(output_dir: str, pso_cfg: dict) -> None:
     save_results(bestbasis, pso_best_fitness, output_dir)
 
 
+def monitor_jobs(output_dir):
+    """Monitor jobs in a directory and show status
+    
+    Parameters:
+    ----------
+    output_dir : str
+        Path to the output directory
+    """
+    session_state = load_session_state(output_dir)
+    if not session_state:
+        print(f"No active session found in {output_dir}")
+        return
+    
+    print(f"Monitoring session from iteration {session_state['iteration']}")
+    print(f"Job IDs: {session_state['job_ids']}")
+    
+    # Check current status
+    wild_card_path = os.path.join(output_dir, 'samples', '*', 'score.json')
+    completed_jobs = len(glob.glob(wild_card_path))
+    
+    still_running = []
+    for job_id in session_state['job_ids']:
+        result = subprocess.run(['condor_q', job_id], 
+                              capture_output=True, text=True)
+        if job_id in result.stdout:
+            still_running.append(job_id)
+    
+    print(f"Progress: {completed_jobs}/{session_state['population_size']} completed")
+    print(f"Running jobs: {len(still_running)}")
+    print(f"Finished jobs: {len(session_state['job_ids']) - len(still_running)}")
+    
+    if completed_jobs == session_state['population_size']:
+        print("✅ All jobs completed! You can now restart the main script.")
+    elif not still_running:
+        print("⚠️  All Condor jobs finished but some results missing. Check for errors.")
+    else:
+        print(f"⏳ Still waiting for {len(still_running)} jobs to complete")
+
 if __name__ == '__main__':
     try:
         arguments = docopt.docopt(__doc__)
+        
+        # Check for resume mode
+        if arguments['--resume']:
+            resume_dir = arguments['--resume']
+            if resume_session(resume_dir):
+                print("✅ Session resumed successfully")
+            else:
+                print("❌ Failed to resume session")
+            exit(0)
+        
+        # Check for monitor mode
+        if arguments['--monitor']:
+            monitor_dir = arguments['--monitor']
+            monitor_jobs(monitor_dir)
+            exit(0)
+        
+        # Normal execution
         parameter_file = arguments['--parameter_file']
         pso_file = arguments['--pso_file']
         pso_cfg = read_cfg(pso_file)
         output_dir=pso_cfg['output_dir']
-        if "parameters" not in parameter_file:
+        
+        if parameter_file is None or "parameters" not in parameter_file:
             main(output_dir, pso_cfg)
         else:
             hyperparameters = read_json_cfg(parameter_file)

@@ -4,8 +4,13 @@
 
 echo "Setting up HyperEvolution-mhh environment..."
 
+
 # Activate virtual environment
-source Hopt/bin/activate
+source /afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/Hopt/bin/activate
+
+# Install uproot and awkward for ntuple analysis
+pip install --upgrade pip
+pip install uproot awkward
 
 # Configure ROOT
 source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.36.04/x86_64-almalinux9.6-gcc115-opt/bin/thisroot.sh
