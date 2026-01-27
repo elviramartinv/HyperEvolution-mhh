@@ -2,7 +2,7 @@
 size for 1000 repeats each optimization consists out of 10k total evaluations.
 Call with 'python'
 
-Usage: 
+Usage:
     mhh_scoring.py [--parameter_file=PTH] --pso_file=PTH
     mhh_scoring.py --resume=DIR
     mhh_scoring.py --monitor=DIR
@@ -37,6 +37,7 @@ import json
 import signal
 import sys
 
+# old reweighting weights (differential XS) from https://arxiv.org/abs/2304.01968 (13 TeV)
 # theocoeffs_old = [
 #     [260.0, 0.0017041787836573525, 0.005859941413819426, 0.0011203511856240794, 0.0016326884261615745, 0.008528140326909796, -0.006294287901387375, -0.0027595385750596247, 0.005164913330395372, 0.006125179428023181, 0.014085783164070144, -0.003248623424659433, -0.00763769577847725, 0.0027011050795191375, 0.00623898517945767, 0.0075008431622157114, -4.0952526946401604e-05, 0.0002299913340205693, 9.768993003289037e-05, 0.0002359846439272683, -0.00010543564692487495, 0.00010874309248669732, 4.9999866115412877e-05, 0.00020776372612401524],
 #     [280.0, 0.0026701737658144224, 0.009641575575876925, 0.0013407699000322149, 0.0018586495587222848, 0.013583030183507306, -0.010045414783448291, -0.0037701275621863793, 0.0071773635297068955, 0.008482826056302815, 0.022857458072595704, -0.004467686270851129, -0.01188725708373393, 0.003161871482705535, 0.00848813591971999, 0.010048847891231498, -1.5470236391718055e-05, -0.000250174201927618, 8.35122572902979e-06, -0.00012650212768802033, 5.9092868090122365e-06, 0.00017992007475443043, 0.00019744952687983413, 0.0002521825660316199],
@@ -82,6 +83,7 @@ import sys
 #     [1300.0, 5.1130672646594986e-05, 0.0021110727693233956, 7.973001541847195e-07, 3.815376790050197e-06, 0.012201915897584915, -0.0004380643122587313, -8.36197371348781e-06, 7.850845942183268e-05, 4.547666083452669e-07, -0.0003855927924018085, -2.8647957127553336e-05, 0.0006952846219619157, 6.187242924172599e-06, 1.432270417855549e-05, 0.00029258596529439736, 2.36440041129965e-05, 1.367348017090276e-05, 1.29978433119328e-05, 0.0001684717397975936, -4.449358308800523e-05, -4.2566398524723325e-05, 4.5177515320243574e-05, 7.499345344380554e-05],
 #     ]
 
+# new reweighting weights  (differential XS) from matheus (13.6 TeV?)
 # new theocoffs
 masslist=set()
 
@@ -100,6 +102,7 @@ masslist=sorted(list(masslist))
 #for t in theocoeffs:
 #    mHH.append(t[0])
 
+# total XS also from https://arxiv.org/abs/2304.01968
 xscoffs = [0.06149445582502288,
  0.3136672029876887,
  0.009301808057440153,
@@ -124,6 +127,7 @@ xscoffs = [0.06149445582502288,
  0.000422901508452418,
  0.003354598203554643]
 
+# NLO formula for gghH XS
 def calcXS(coeffs, kl, kt, c2, cg, c2g):
     cg = cg/1.5
     c2g = -c2g/3
@@ -147,6 +151,7 @@ def calcXS(coeffs, kl, kt, c2, cg, c2g):
     xs += coeffs[22]*cg*cg*c2g
     return xs
 
+# differential XS distribution
 def calcTotXS(kl, kt, c2, cg, c2g):
     return calcXS(xscoffs, kl, kt, c2, cg, c2g)
 
@@ -163,9 +168,11 @@ def calcXSDist(kl, kt, c2, cg, c2g, kSM=1.115):
     #return xslist, (mhhlist+[13000])
     return xslist, mhhlist
 
+# dont always rethrow toys, save instead using key
 def makeKey(kl, kt, c2, cg, c2g, samplesize):
     return "kl_{0}_kt_{1}_c2_{2}_cg_{3}_c2g_{4}_{5}events".format(kl, kt, c2, cg, c2g, samplesize)
 
+# throw toys according to differential XS, normalize to 138 fb and 13 TeV XS
 @functools.lru_cache(None)
 def calcDist(kl, kt, c2, cg, c2g, kSM=1.115, samplesize=5000, maxmhh=1050):
     key = makeKey(kl, kt, c2, cg, c2g, samplesize)
@@ -176,7 +183,7 @@ def calcDist(kl, kt, c2, cg, c2g, kSM=1.115, samplesize=5000, maxmhh=1050):
         idx = len(mhhs)-mhhs.index(maxmhh)
         mhhsplot = mhhs[:-idx]
         # renormalize...
-        ### xs = xs[:-idx] 
+        ### xs = xs[:-idx]
         #xs *= 1/sum(xs)
     random.seed(12345)
     data = random.choices(mhhs[:-1], weights=xs, k=samplesize)
@@ -251,6 +258,7 @@ def makeTestSet(seed=12345678, size=5000, samplesize=5000, c2glimited=False):
     toys += createScansets()
     return toys
 
+# Matrix inversion formulas
 def func5D(sample):
     return [
     sample[0]**2 * sample[1]**2,
@@ -284,11 +292,13 @@ def makebase(ipt, start=[]):
     for j in range(int(len(ipt)/5)):
         s = str(j+1)
         base.append([ipt[c+s] for c in ["kl_","kt_", "c2_", "cg_", "c2g_"]])
-    for j in range(len(base)):
-        for i in range(len(base[j])):
-            base[j][i] = base[j][i] + start[j][i]
+    if start:  # Only add start offset if it's provided
+        for j in range(len(base)):
+            for i in range(len(base[j])):
+                base[j][i] = base[j][i] + start[j][i]
     return base
 
+# calc dist using matrix inverison model instead of toys by linear combination of input scenarios
 def calcDistModel(kl, kt, c2, cg, c2g, inputs, samplesize=5000, start=[]):
     base = makebase(inputs, start=start)
     coeffs = model_5D(base, kl, kt, c2, cg, c2g)
@@ -349,7 +359,7 @@ def scorebasis(basis, toys, start=[], samplesize=5000, extra=False, chi2strength
 
 def create_optimized_batch_script(output_dir, particles_per_job, pso_cfg):
     """Creates an optimized shell script that uses $(Process) to determine which particles to process
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -358,7 +368,7 @@ def create_optimized_batch_script(output_dir, particles_per_job, pso_cfg):
         Number of particles each job should process
     pso_cfg : dict
         PSO configuration dictionary
-    
+
     Returns:
     -------
     script_path : str
@@ -408,7 +418,7 @@ EOF
 
 echo "Job $job_id completed"
 """
-    
+
     script_path = os.path.join(output_dir, 'optimized_batch.sh')
     with open(script_path, 'w') as file:
         file.write(script_content)
@@ -419,7 +429,7 @@ def create_optimized_submit_file(output_dir, script_path, total_jobs, pso_cfg):
     import os
     os.makedirs(os.path.join(output_dir, 'logs'), exist_ok=True)
     """Creates an optimized Condor submit file using queue N for multiple jobs
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -430,7 +440,7 @@ def create_optimized_submit_file(output_dir, script_path, total_jobs, pso_cfg):
         Total number of jobs to queue
     pso_cfg : dict
         PSO configuration dictionary
-    
+
     Returns:
     -------
     submit_file_path : str
@@ -440,7 +450,7 @@ def create_optimized_submit_file(output_dir, script_path, total_jobs, pso_cfg):
     cpus = pso_cfg.get('condor_cpus', 4)
     memory = pso_cfg.get('condor_memory', '4GB')
     max_runtime = pso_cfg.get('condor_max_runtime', '86400')
-    
+
     submit_content = f"""universe = vanilla
 executable = {script_path}
 arguments = $(Process)
@@ -458,7 +468,7 @@ log = {output_dir}/logs/job_$(Process).log
 # Queue multiple jobs in one cluster
 queue {total_jobs}
 """
-    
+
     submit_file_path = os.path.join(output_dir, 'optimized_batch.sub')
     with open(submit_file_path, 'w') as file:
         file.write(submit_content)
@@ -466,7 +476,7 @@ queue {total_jobs}
 
 def cleanup_iteration_files(output_dir, iteration_nr=None, pso_cfg=None):
     """Clean up temporary files from previous iteration with configurable log retention
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -480,13 +490,13 @@ def cleanup_iteration_files(output_dir, iteration_nr=None, pso_cfg=None):
     keep_logs = pso_cfg.get('keep_iteration_logs', True) if pso_cfg else True
     keep_recent_iterations = pso_cfg.get('keep_recent_iterations', 5) if pso_cfg else 5
     compress_logs = pso_cfg.get('compress_logs', False) if pso_cfg else False
-    
+
     # Move or clean logs from current iteration
     if iteration_nr is not None:
         if keep_logs:
             iter_logs_dir = os.path.join(output_dir, 'logs', f'iteration_{iteration_nr}')
             os.makedirs(iter_logs_dir, exist_ok=True)
-            
+
             # Move current logs to iteration directory
             for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.out')):
                 shutil.move(log_file, iter_logs_dir)
@@ -494,7 +504,7 @@ def cleanup_iteration_files(output_dir, iteration_nr=None, pso_cfg=None):
                 shutil.move(log_file, iter_logs_dir)
             for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.log')):
                 shutil.move(log_file, iter_logs_dir)
-                
+
             # Compress old logs if requested
             if compress_logs and iteration_nr > 0:
                 old_iter_dir = os.path.join(output_dir, 'logs', f'iteration_{iteration_nr-1}')
@@ -505,13 +515,13 @@ def cleanup_iteration_files(output_dir, iteration_nr=None, pso_cfg=None):
                         tar.add(old_iter_dir, arcname=f'iteration_{iteration_nr-1}')
                     shutil.rmtree(old_iter_dir)
                     print(f"Compressed logs for iteration {iteration_nr-1}")
-            
+
             # Remove very old logs to keep only recent iterations
             if keep_recent_iterations > 0 and iteration_nr >= keep_recent_iterations:
                 old_iteration = iteration_nr - keep_recent_iterations
                 old_iter_dir = os.path.join(output_dir, 'logs', f'iteration_{old_iteration}')
                 old_tar_file = os.path.join(output_dir, 'logs', f'iteration_{old_iteration}.tar.gz')
-                
+
                 if os.path.exists(old_iter_dir):
                     shutil.rmtree(old_iter_dir)
                     print(f"Removed old logs for iteration {old_iteration}")
@@ -526,7 +536,7 @@ def cleanup_iteration_files(output_dir, iteration_nr=None, pso_cfg=None):
                 os.remove(log_file)
             for log_file in glob.glob(os.path.join(output_dir, 'logs', 'batch_*.log')):
                 os.remove(log_file)
-    
+
     # Always remove script and submit files
     for script_file in glob.glob(os.path.join(output_dir, 'batch_*.sh')):
         os.remove(script_file)
@@ -539,7 +549,7 @@ def cleanup_iteration_files(output_dir, iteration_nr=None, pso_cfg=None):
 
 def submit_condor_jobs(output_dir, parameter_dicts, pso_cfg):
     """Submits parameter evaluation jobs to Condor with optimized batching using queue N
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -548,7 +558,7 @@ def submit_condor_jobs(output_dir, parameter_dicts, pso_cfg):
         List of parameter dictionaries to evaluate
     pso_cfg : dict
         PSO configuration dictionary
-    
+
     Returns:
     -------
     job_ids : list
@@ -557,28 +567,28 @@ def submit_condor_jobs(output_dir, parameter_dicts, pso_cfg):
     population_size = len(parameter_dicts)
     particles_per_job = pso_cfg.get("max_batch_size", 10)
     total_jobs = (population_size + particles_per_job - 1) // particles_per_job
-    
+
     # Create logs directory
     # logs_dir = os.path.join(output_dir, 'logs')
     # os.makedirs(logs_dir, exist_ok=True)
-    
+
     print(f"Using {particles_per_job} particles per job for {population_size} evaluations")
     print(f"This will create 1 Condor cluster with {total_jobs} jobs")
-    
+
     # Save parameters to files first
     parameters_to_file(output_dir, parameter_dicts)
-    
+
     # Create optimized batch script and submit file
     script_path = create_optimized_batch_script(output_dir, particles_per_job, pso_cfg)
     submit_file_path = create_optimized_submit_file(output_dir, script_path, total_jobs, pso_cfg)
-    
+
     # Submit the entire batch as one cluster
-    result = subprocess.run(['condor_submit', submit_file_path], 
+    result = subprocess.run(['condor_submit', submit_file_path],
                           capture_output=True, text=True)
     # Pausa para evitar saturar el sistema
     import time
     time.sleep(10)  # Espera 10 segundos tras cada envío
-    
+
     if result.returncode == 0:
         # Extract cluster ID from output
         for line in result.stdout.split('\n'):
@@ -589,12 +599,12 @@ def submit_condor_jobs(output_dir, parameter_dicts, pso_cfg):
     else:
         print(f"Failed to submit batch: {result.stderr}")
         raise RuntimeError(f"Condor submission failed for optimized batch")
-    
+
     return []
 
 def setup_signal_handlers(output_dir):
     """Setup signal handlers for graceful interruption handling
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -609,13 +619,13 @@ def setup_signal_handlers(output_dir):
             print(f"To monitor: python mhh_scoring.py --monitor {output_dir}")
         print("Exiting...")
         sys.exit(0)
-    
+
     signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)  # Termination
 
 def save_session_state(output_dir, iteration, job_ids, population_size, pso_cfg):
     """Save current session state for recovery after disconnection
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -637,43 +647,43 @@ def save_session_state(output_dir, iteration, job_ids, population_size, pso_cfg)
         'timestamp': time.time(),
         'status': 'waiting_for_jobs'
     }
-    
+
     session_file = os.path.join(output_dir, '.session_state.json')
     with open(session_file, 'w') as f:
         json.dump(session_state, f, indent=2)
-    
+
     print(f"   Session state saved. Recovery options:")
     print(f"   Resume: python mhh_scoring.py --resume {output_dir}")
     print(f"   Monitor: python mhh_scoring.py --monitor {output_dir}")
 
 def load_session_state(output_dir):
     """Load session state for recovery
-    
+
     Parameters:
     ----------
     output_dir : str
         Path to the output directory
-        
+
     Returns:
     -------
     session_state : dict or None
         Loaded session state or None if no valid session
     """
     session_file = os.path.join(output_dir, '.session_state.json')
-    
+
     if not os.path.exists(session_file):
         return None
-        
+
     try:
         with open(session_file, 'r') as f:
             session_state = json.load(f)
-        
+
         # Check if session is recent (within 24 hours)
         if time.time() - session_state.get('timestamp', 0) > 86400:
             print("Session state is too old (>24h), starting fresh")
             os.remove(session_file)
             return None
-            
+
         return session_state
     except (json.JSONDecodeError, KeyError) as e:
         print(f"Corrupted session file, starting fresh: {e}")
@@ -682,12 +692,12 @@ def load_session_state(output_dir):
 
 def resume_session(output_dir):
     """Resume a previously interrupted session
-    
+
     Parameters:
     ----------
     output_dir : str
         Path to the output directory
-        
+
     Returns:
     -------
     success : bool
@@ -697,19 +707,19 @@ def resume_session(output_dir):
     if not session_state:
         print("No valid session found to resume")
         return False
-    
+
     print(f"Resuming session from iteration {session_state['iteration']}")
     print(f"Monitoring {len(session_state['job_ids'])} Condor jobs...")
-    
+
     # Wait for the jobs from the interrupted session
     try:
         wait_for_condor_jobs(output_dir, session_state['job_ids'], session_state['population_size'])
-        
+
         # Clean up session file
         session_file = os.path.join(output_dir, '.session_state.json')
         if os.path.exists(session_file):
             os.remove(session_file)
-            
+
         print("Session resumed successfully. You can now restart the main script.")
         return True
     except Exception as e:
@@ -718,7 +728,7 @@ def resume_session(output_dir):
 
 def wait_for_condor_jobs(output_dir, job_ids, population_size):
     """Waits for all Condor jobs to complete and checks for errors
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -727,27 +737,27 @@ def wait_for_condor_jobs(output_dir, job_ids, population_size):
         List of Condor job IDs to wait for
     population_size : int
         Expected number of completed jobs
-    
+
     Returns:
     -------
     Nothing
     """
     print(f"Waiting for {len(job_ids)} Condor jobs to complete...")
-    
+
     check_interval = 10  # Start with 10 seconds
     max_interval = 60    # Maximum wait time between checks
     last_progress_time = time.time()
     progress_interval = 60  # 5 minutos
-    
+
     while True:
         # Check if all score files are present
         wild_card_path = os.path.join(output_dir, 'samples', '*', 'score.json')
         completed_jobs = len(glob.glob(wild_card_path))
-        
+
         if completed_jobs == population_size:
             print(f"All {population_size} jobs completed successfully!")
             break
-            
+
         # Check for errors in error files (check logs directory)
         try:
             check_error_in_logs(output_dir)
@@ -757,12 +767,12 @@ def wait_for_condor_jobs(output_dir, job_ids, population_size):
             if completed_jobs < population_size * 0.8:  # If less than 80% completed
                 raise RuntimeError(f"Too many jobs failed: only {completed_jobs}/{population_size} completed")
             break
-        
+
         # Check job status using condor_q (works for both individual jobs and clusters)
         still_running = []
         running_subjobs = 0
         for job_id in job_ids:
-            result = subprocess.run(['condor_q', job_id], 
+            result = subprocess.run(['condor_q', job_id],
                                   capture_output=True, text=True)
             if job_id in result.stdout:
                 still_running.append(job_id)
@@ -770,7 +780,7 @@ def wait_for_condor_jobs(output_dir, job_ids, population_size):
                 for line in result.stdout.split('\n'):
                     if job_id in line and 'RUN' in line:
                         running_subjobs += 1
-        
+
         # Show periodic progress updates
         current_time = time.time()
         if current_time - last_progress_time > progress_interval:
@@ -779,7 +789,7 @@ def wait_for_condor_jobs(output_dir, job_ids, population_size):
             else:  # Multiple jobs/clusters
                 print(f"⏳ Progress: {completed_jobs}/{population_size} completed, {len(still_running)} jobs running")
             last_progress_time = current_time
-        
+
         if still_running:
             # if len(job_ids) == 1:  # Single cluster
             #     print(f"Still waiting for cluster {job_ids[0]}. Completed: {completed_jobs}/{population_size}")
@@ -795,12 +805,12 @@ def wait_for_condor_jobs(output_dir, job_ids, population_size):
             if completed_jobs < population_size:
                 time.sleep(5)
                 continue
-            
+
         time.sleep(check_interval)
 
 def check_error_in_logs(output_dir):
     """Enhanced error checking that looks in the logs directory
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -808,14 +818,14 @@ def check_error_in_logs(output_dir):
     """
     number_errors = 0
     error_list = ['FAILED', 'CANCELLED', 'ERROR', 'Error', 'Traceback']
-    
+
     # Check in both main directory and logs directory
     error_patterns = [
         os.path.join(output_dir, 'error*'),
         os.path.join(output_dir, 'logs', '*err'),
         os.path.join(output_dir, 'logs', '*out')  # Sometimes errors go to stdout
     ]
-    
+
     for pattern in error_patterns:
         for error_file in glob.glob(pattern):
             if os.path.exists(error_file) and os.path.getsize(error_file) > 0:
@@ -826,7 +836,7 @@ def check_error_in_logs(output_dir):
                             number_errors += 1
                             print(f"Error found in {error_file}")
                             break
-    
+
     if number_errors > 0:
         print(f"Found errors in {number_errors} files")
         # Don't exit immediately for batch jobs, let caller decide
@@ -841,11 +851,11 @@ def ensemble_score(
     if settings and settings.get('use_batch', False):
         population_size = len(parameter_dicts)
         print(f"Running {population_size} evaluations...")
-        
+
         # Get current iteration number for cleanup management
         iteration_nr = getattr(ensemble_score, 'current_iteration', 0)
         ensemble_score.current_iteration = iteration_nr + 1
-        
+
         # Clean up files from previous iteration (if not first iteration)
         if iteration_nr > 0:
             cleanup_iteration_files(settings['output_dir'], iteration_nr - 1, settings)
@@ -869,13 +879,13 @@ def ensemble_score(
             # Clean up current iteration files (but keep logs according to config)
             cleanup_iteration_files(settings['output_dir'], iteration_nr, settings)
         return scores
-        
+
         # Submit jobs to Condor with intelligent batching
         job_ids = submit_condor_jobs(settings['output_dir'], parameter_dicts, settings)
-        
+
         # Save session state for recovery
         save_session_state(settings['output_dir'], iteration_nr, job_ids, population_size, settings)
-        
+
         try:
             # Wait for all jobs to complete
             wait_for_condor_jobs(settings['output_dir'], job_ids, population_size)
@@ -1054,7 +1064,7 @@ def parameters_to_file(output_dir, hyperparameter_sets):
 def main(output_dir: str, pso_cfg: dict) -> None:
     ''' Runs the particle swarm optimization to optimize the mHH function
     and saves the result to a file in the specified folder.
-    
+
     Supports both local multiprocessing and Condor batch system execution
     based on the 'use_batch' parameter in the configuration.
 
@@ -1068,7 +1078,7 @@ def main(output_dir: str, pso_cfg: dict) -> None:
         None
     '''
     os.makedirs(output_dir, exist_ok=True)
-    
+
     # Check if batch mode is enabled and clean up previous files if needed
     if pso_cfg.get('use_batch', False):
         print("Batch mode enabled")
@@ -1077,17 +1087,17 @@ def main(output_dir: str, pso_cfg: dict) -> None:
         previous_files_dir = os.path.join(output_dir, 'previous_iterations')
         os.makedirs(previous_files_dir, exist_ok=True)
         pso_cfg['previous_files_dir'] = previous_files_dir
-        
+
     else:
         print("Local mode enabled")
-    
+
     hyperparameters = read_cfg(pso_cfg["hpconfig"])
     toys=makeTestSet(size=2500, samplesize=pso_cfg['samplesize'], c2glimited=pso_cfg['c2glimited'])
     start=pso_cfg['basis']
-    
+
     # Create ensemble function that includes toys and start parameters
     ensemble=functools.partial(ensemble_score, toys=toys, start=start)
-    
+
     swarm = pso.ParticleSwarm(ensemble, hyperparameters, pso_cfg)
     pso_best_parameters, pso_best_fitness = swarm.optimize()
     pso_best_fitness = (pso_best_fitness)*-1
@@ -1101,7 +1111,7 @@ def main(output_dir: str, pso_cfg: dict) -> None:
 
 def monitor_jobs(output_dir):
     """Monitor jobs in a directory and show status
-    
+
     Parameters:
     ----------
     output_dir : str
@@ -1111,25 +1121,25 @@ def monitor_jobs(output_dir):
     if not session_state:
         print(f"No active session found in {output_dir}")
         return
-    
+
     print(f"Monitoring session from iteration {session_state['iteration']}")
     print(f"Job IDs: {session_state['job_ids']}")
-    
+
     # Check current status
     wild_card_path = os.path.join(output_dir, 'samples', '*', 'score.json')
     completed_jobs = len(glob.glob(wild_card_path))
-    
+
     still_running = []
     for job_id in session_state['job_ids']:
-        result = subprocess.run(['condor_q', job_id], 
+        result = subprocess.run(['condor_q', job_id],
                               capture_output=True, text=True)
         if job_id in result.stdout:
             still_running.append(job_id)
-    
+
     print(f"Progress: {completed_jobs}/{session_state['population_size']} completed")
     print(f"Running jobs: {len(still_running)}")
     print(f"Finished jobs: {len(session_state['job_ids']) - len(still_running)}")
-    
+
     if completed_jobs == session_state['population_size']:
         print("✅ All jobs completed! You can now restart the main script.")
     elif not still_running:
@@ -1140,7 +1150,7 @@ def monitor_jobs(output_dir):
 if __name__ == '__main__':
     try:
         arguments = docopt.docopt(__doc__)
-        
+
         # Check for resume mode
         if arguments['--resume']:
             resume_dir = arguments['--resume']
@@ -1149,19 +1159,19 @@ if __name__ == '__main__':
             else:
                 print("❌ Failed to resume session")
             exit(0)
-        
+
         # Check for monitor mode
         if arguments['--monitor']:
             monitor_dir = arguments['--monitor']
             monitor_jobs(monitor_dir)
             exit(0)
-        
+
         # Normal execution
         parameter_file = arguments['--parameter_file']
         pso_file = arguments['--pso_file']
         pso_cfg = read_cfg(pso_file)
         output_dir=pso_cfg['output_dir']
-        
+
         if parameter_file is None or "parameters" not in parameter_file:
             main(output_dir, pso_cfg)
         else:
