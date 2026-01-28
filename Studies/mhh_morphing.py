@@ -174,14 +174,16 @@ def parse_target_filename(dirname):
         }
     return None
 
-def scan_target_points():
-    if not os.path.exists(TARGET_DIR):
-        print(f"Error: Target directory not found: {TARGET_DIR}")
+def scan_target_points(basis_point_mode=False):
+    search_dir = BASIS_DIR if basis_point_mode else TARGET_DIR
+
+    if not os.path.exists(search_dir):
+        print(f"Error: Directory not found: {search_dir}")
         return []
 
     targets = []
-    for dirname in os.listdir(TARGET_DIR):
-        full_path = os.path.join(TARGET_DIR, dirname)
+    for dirname in os.listdir(search_dir):
+        full_path = os.path.join(search_dir, dirname)
         if not os.path.isdir(full_path):
             continue
 
@@ -193,6 +195,7 @@ def scan_target_points():
         if params:
             params['dirname'] = dirname
             params['root_path'] = root_path
+            params['is_basis_point'] = basis_point_mode
             targets.append(params)
 
     return targets
@@ -306,12 +309,38 @@ def compare_morphed_to_target(target_info, save_plots=True, debug=False, use_nlo
     cg = target_info['cg']
     c2g = target_info['c2g']
     energy = target_info['energy']
+    is_basis_point = target_info.get('is_basis_point', False)
+
+    # Check if output already exists
+    if save_plots and not replace:
+        # Determine output directory structure
+        if is_basis_point:
+            category_subdir = "basis_points"
+        else:
+            is_int = is_interpolation((kl, kt, c2, cg, c2g))
+            category_subdir = "interpolation" if is_int else "extrapolation"
+
+        model_subdir = "nlo" if use_nlo else "lo"
+        param_folder = f"kl_{kl:.3f}_kt_{kt:.3f}_c2_{c2:.3f}_cg_{cg:.3f}_c2g_{c2g:.3f}"
+        output_dir = os.path.join(PLOT_DIR, model_subdir, category_subdir, param_folder)
+        plotname = os.path.join(output_dir, "output.png")
+
+        if os.path.exists(plotname):
+            print(f"\n{'='*80}")
+            print(f"Output already exists (skipping): {plotname}")
+            print(f"Use 'replace' or 'r' flag to overwrite existing outputs")
+            print(f"{'='*80}")
+            return None
 
     print(f"\n{'='*80}")
-    print(f"Target point:")
+    if is_basis_point:
+        print(f"Basis point:")
+    else:
+        print(f"Target point:")
     print(f"  kl={kl:.4f}, kt={kt:.4f}, c2={c2:.4f}, cg={cg:.4f}, c2g={c2g:.4f}")
     print(f"  Energy: {energy} GeV")
-    print(f"  Is interpolation: {'Yes' if is_interpolation((kl, kt, c2, cg, c2g)) else 'No'}")
+    if not is_basis_point:
+        print(f"  Is interpolation: {'Yes' if is_interpolation((kl, kt, c2, cg, c2g)) else 'No'}")
     print(f"{'='*80}")
 
     h_morphed = morph_distribution((kl, kt, c2, cg, c2g), energy=energy, debug=debug, use_nlo=use_nlo)
@@ -391,38 +420,37 @@ def compare_morphed_to_target(target_info, save_plots=True, debug=False, use_nlo
         ax.set_xticklabels([])
         plt.subplots_adjust(wspace=0, hspace=0.05)
 
-        is_int = is_interpolation((kl, kt, c2, cg, c2g))
-        int_ext_subdir = "interpolation" if is_int else "extrapolation"
+        if is_basis_point:
+            category_subdir = "basis_points"
+        else:
+            is_int = is_interpolation((kl, kt, c2, cg, c2g))
+            category_subdir = "interpolation" if is_int else "extrapolation"
 
         model_subdir = "nlo" if use_nlo else "lo"
 
         param_folder = f"kl_{kl:.3f}_kt_{kt:.3f}_c2_{c2:.3f}_cg_{cg:.3f}_c2g_{c2g:.3f}"
 
-        output_dir = os.path.join(PLOT_DIR, model_subdir, int_ext_subdir, param_folder)
+        output_dir = os.path.join(PLOT_DIR, model_subdir, category_subdir, param_folder)
         os.makedirs(output_dir, exist_ok=True)
 
         plotname = os.path.join(output_dir, "output.png")
         rootname = os.path.join(output_dir, "output.root")
 
-        # Check if plot already exists
-        if os.path.exists(plotname) and not replace:
-            print(f"\nPlot already exists (skipping): {plotname}")
-            print(f"Use --replace to overwrite existing plots")
-            plt.close()
-        else:
-            plt.savefig(plotname, dpi=300, bbox_inches='tight')
-            print(f"\nPlot saved as: {plotname}")
-            plt.close()
+        # Save outputs (check was already done at function start)
+        plt.savefig(plotname, dpi=300, bbox_inches='tight')
+        print(f"\nPlot saved as: {plotname}")
+        plt.close()
 
-            f_out = ROOT.TFile.Open(rootname, "RECREATE")
-            f_out.mkdir("mHH")
-            f_out.cd("mHH")
-            h_morphed_save = h_morphed.Clone("h_morphed")
-            h_target_save = h_target.Clone("h_LHE")
-            h_morphed_save.Write()
-            h_target_save.Write()
-            f_out.Close()
-            print(f"ROOT file saved as: {rootname}")
+        # Save ROOT file with both histograms inside mHH directory
+        f_out = ROOT.TFile.Open(rootname, "RECREATE")
+        f_out.mkdir("mHH")
+        f_out.cd("mHH")
+        h_morphed_save = h_morphed.Clone("h_morphed")
+        h_target_save = h_target.Clone("h_LHE")
+        h_morphed_save.Write()
+        h_target_save.Write()
+        f_out.Close()
+        print(f"ROOT file saved as: {rootname}")
 
         # Generate phase space plots if requested
         if plot_phase_space:
@@ -439,9 +467,11 @@ def compare_morphed_to_target(target_info, save_plots=True, debug=False, use_nlo
 
     return results
 
-def compare_all_targets(save_plots=True, debug=False, max_targets=None, filter_mode=None, use_nlo=False, replace=False, param_ranges=None, plot_phase_space=False):
-    targets = scan_target_points()
-    print(f"\nFound {len(targets)} target points in {TARGET_DIR}")
+def compare_all_targets(save_plots=True, debug=False, max_targets=None, filter_mode=None, use_nlo=False, replace=False, param_ranges=None, plot_phase_space=False, basis_point_mode=False):
+    targets = scan_target_points(basis_point_mode=basis_point_mode)
+    search_dir = BASIS_DIR if basis_point_mode else TARGET_DIR
+    point_type = "basis points" if basis_point_mode else "target points"
+    print(f"\nFound {len(targets)} {point_type} in {search_dir}")
 
     # Filter by parameter ranges
     if param_ranges:
@@ -457,8 +487,8 @@ def compare_all_targets(save_plots=True, debug=False, max_targets=None, filter_m
         targets = filtered_targets
         print(f"Filtered by parameter ranges to {len(targets)} points")
 
-    # Filter by interpolation/extrapolation
-    if filter_mode:
+    # Filter by interpolation/extrapolation (not applicable for basis points)
+    if filter_mode and not basis_point_mode:
         filtered_targets = []
         for t in targets:
             is_int = is_interpolation((t['kl'], t['kt'], t['c2'], t['cg'], t['c2g']))
@@ -467,14 +497,15 @@ def compare_all_targets(save_plots=True, debug=False, max_targets=None, filter_m
         targets = filtered_targets
         mode_name = "interpolation" if filter_mode == 'int' else "extrapolation"
         print(f"Filtered to {len(targets)} {mode_name} points")
+    elif filter_mode and basis_point_mode:
+        print("Warning: int/ext filter ignored in basis point mode")
 
     if max_targets:
         targets = targets[:max_targets]
         print(f"Limiting to first {max_targets} targets")
     else:
-        # Always limit to 20 unless explicitly overridden
-        targets = targets[:20]
-        print(f"Limiting to first 20 targets (default)")
+        targets = targets[:25]
+        print(f"Limiting to first 25 targets (default)")
 
     results = []
 
@@ -589,6 +620,9 @@ if __name__ == "__main__":
     plot_phase_space = "phase-space" in sys.argv or "ps" in sys.argv
     sys.argv = [arg for arg in sys.argv if arg not in ["phase-space", "ps"]]
 
+    basis_point_mode = "basis-point" in sys.argv or "bp" in sys.argv
+    sys.argv = [arg for arg in sys.argv if arg not in ["basis-point", "bp"]]
+
     filter_mode = None
     if "int" in sys.argv:
         filter_mode = 'int'
@@ -617,12 +651,12 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         # Process specific target by index
         target_idx = int(sys.argv[1])
-        targets = scan_target_points()
+        targets = scan_target_points(basis_point_mode=basis_point_mode)
         if target_idx >= 0 and target_idx < len(targets):
             compare_morphed_to_target(targets[target_idx], save_plots=True, debug=debug, use_nlo=use_nlo, replace=replace, plot_phase_space=plot_phase_space)
         else:
             print(f"Error: Target index {target_idx} out of range (0-{len(targets)-1})")
     else:
         # Process all targets
-        max_targets = 25 if test_mode else None
-        compare_all_targets(save_plots=True, debug=debug, max_targets=max_targets, filter_mode=filter_mode, use_nlo=use_nlo, replace=replace, param_ranges=param_ranges if param_ranges else None, plot_phase_space=plot_phase_space)
+        max_targets = 5 if test_mode else None
+        compare_all_targets(save_plots=True, debug=debug, max_targets=max_targets, filter_mode=filter_mode, use_nlo=use_nlo, replace=replace, param_ranges=param_ranges if param_ranges else None, plot_phase_space=plot_phase_space, basis_point_mode=basis_point_mode)

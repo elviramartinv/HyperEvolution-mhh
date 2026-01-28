@@ -1,6 +1,7 @@
 #!/bin/bash
 # Script to convert all .lhe files in the source directory to .root files
 # and save them in the destination directory, preserving the folder structure.
+# Usage: ./convert_all_lhe.sh
 
 # SRC_BASE="/eos/cms/store/group/phys_b2g/event_level_reweighting_HH/ggHH_basispoint_13_13p6"
 SRC_BASE="/eos/cms/store/group/phys_b2g/event_level_reweighting_HH/HEFT_13p6"

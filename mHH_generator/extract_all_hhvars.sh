@@ -1,5 +1,6 @@
 #!/bin/bash
 # Script to execute mhh_extractor on all sample folders and save outputs in HH_variables
+# Usage: ./extract_all_hhvars.sh
 
 MHH_EXTRACTOR="/afs/cern.ch/user/e/emartinv/public/HyperEvolution-mhh/mHH_generator/mhh_extractor.py"
 # BASE_DIR="/eos/user/e/emartinv/event_level_reweighting_HH/ggHH_basispoint_13_13p6"

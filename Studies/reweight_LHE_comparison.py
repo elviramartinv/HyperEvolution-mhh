@@ -78,21 +78,6 @@ EOS_BASE_PATH = "/eos/user/e/emartinv/event_level_reweighting_HH/ggHH_basispoint
 PLOT_DIR = "reweight_LHE_comparison_plots"
 
 def find_lhe_file(kl, kt, c2, cg, c2g, energy=6500):
-    """
-    Find the corresponding LHE ROOT file for given couplings
-
-    Parameters:
-    -----------
-    kl, kt, c2, cg, c2g : float
-        Coupling values in LHE convention
-    energy : int
-        Center of mass energy in GeV
-
-    Returns:
-    --------
-    str : path to the ROOT file, or None if not found
-    """
-    # Build the directory name
     dirname = f"testrun_params_klambda_{kl}_ct_{kt}_ctt_{c2}_cggh_{cg}_cgghh_{c2g}_energy_{energy}_TeV"
     full_path = os.path.join(EOS_BASE_PATH, dirname, "HH_variables", "output.root")
 
@@ -103,20 +88,6 @@ def find_lhe_file(kl, kt, c2, cg, c2g, energy=6500):
         return None
 
 def get_mhh_from_root(root_file_path, reference_hist):
-    """
-    Extract mHH histogram from ROOT file with same binning as reference
-
-    Parameters:
-    -----------
-    root_file_path : str
-        Path to the ROOT file
-    reference_hist : ROOT.TH1D
-        Reference histogram to match binning
-
-    Returns:
-    --------
-    ROOT.TH1D : mHH histogram with same binning as reference
-    """
     f = ROOT.TFile.Open(root_file_path, "READ")
     if not f or f.IsZombie():
         print(f"Error: Could not open file {root_file_path}")
@@ -128,72 +99,32 @@ def get_mhh_from_root(root_file_path, reference_hist):
         f.Close()
         return None
 
-    # Create histogram with EXACT same binning as reference by copying bin edges
     nbins = reference_hist.GetNbinsX()
     xaxis = reference_hist.GetXaxis()
 
-    # Get bin edges from reference histogram
     from array import array
     bin_edges = array('d', [xaxis.GetBinLowEdge(i) for i in range(1, nbins + 2)])
 
     h = ROOT.TH1D("h_mhh_lhe", "mHH from LHE", nbins, bin_edges)
     h.Sumw2()
 
-    # Fill histogram from tree
     tree.Draw("mHH>>h_mhh_lhe", "", "goff")
 
-    # Clone the histogram so we can close the file
     h_clone = h.Clone(f"h_mhh_lhe_{os.path.basename(root_file_path)}")
     h_clone.SetDirectory(0)
 
     f.Close()
     return h_clone
 
-def convert_reweight_to_lhe(kl, kt, c2, cg, c2g):
-    """
-    Convert couplings from reweight convention to LHE convention
-
-    Parameters:
-    -----------
-    kl, kt, c2, cg, c2g : float
-        Couplings in reweight convention
-
-    Returns:
-    --------
-    tuple : (kl, kt, c2, cg_lhe, c2g_lhe)
-    """
-    cg_lhe = cg / 1.5
-    c2g_lhe = -c2g / 3.0
-    return kl, kt, c2, cg_lhe, c2g_lhe
-
 def compare_distributions(idx, save_plots=True, debug=False):
-    """
-    Compare mHH distributions from reweight and LHE for a specific basis point
-
-    Parameters:
-    -----------
-    idx : int
-        Index of the basis point to compare (0-22)
-    save_plots : bool
-        Whether to save comparison plots
-    debug : bool
-        Whether to print detailed debug information about KS test calculation
-
-    Returns:
-    --------
-    dict : Dictionary with comparison statistics
-    """
     if idx < 0 or idx >= len(psotemp_reweight):
         print(f"Error: Index {idx} out of range (0-{len(psotemp_reweight)-1})")
         return None
 
-    # Get couplings in reweight convention
+    # Reweight convention
     kl_rw, kt_rw, c2_rw, cg_rw, c2g_rw = psotemp_reweight[idx]
 
-    # Convert to LHE convention
-    kl_lhe, kt_lhe, c2_lhe, cg_lhe, c2g_lhe = convert_reweight_to_lhe(kl_rw, kt_rw, c2_rw, cg_rw, c2g_rw)
-
-    # Get expected LHE couplings
+    # LHE couplings
     kl_exp, kt_exp, c2_exp, cg_exp, c2g_exp = psotemp_LHE[idx]
 
     print(f"\n{'='*80}")
@@ -202,11 +133,9 @@ def compare_distributions(idx, save_plots=True, debug=False):
     print(f"Reweight convention: kl={kl_rw:.4f}, kt={kt_rw:.4f}, c2={c2_rw:.4f}, cg={cg_rw:.4f}, c2g={c2g_rw:.4f}")
     print(f"LHE convention:      kl={kl_exp:.4f}, kt={kt_exp:.4f}, c2={c2_exp:.4f}, cg={cg_exp:.4f}, c2g={c2g_exp:.4f}")
 
-    # Get distribution from reweight
-    print("\nGenerating distribution from reweight...")
+    print("\nDistribution from reweight...")
     h_reweight = calcDist(kl_rw, kt_rw, c2_rw, cg_rw, c2g_rw, samplesize=50000)
 
-    # Find and read LHE file
     lhe_file = find_lhe_file(kl_exp, kt_exp, c2_exp, cg_exp, c2g_exp)
     if not lhe_file:
         print("Error: Could not find LHE file")
@@ -228,18 +157,15 @@ def compare_distributions(idx, save_plots=True, debug=False):
         h_lhe.Scale(scale_factor)
         print(f"\nScaled LHE histogram by {scale_factor:.4f} to match reweight normalization")
 
-    # Compute KS test
     if debug:
         print("\n" + "="*80)
-        print("KS TEST DEBUG INFORMATION")
+        print("KS TEST DETAILS")
         print("="*80)
 
-        # Show histogram statistics
         print(f"\nHistogram statistics:")
         print(f"  Reweight - Mean: {h_reweight.GetMean():.2f}, RMS: {h_reweight.GetRMS():.2f}, Integral: {h_reweight.Integral():.2f}")
         print(f"  LHE      - Mean: {h_lhe.GetMean():.2f}, RMS: {h_lhe.GetRMS():.2f}, Integral: {h_lhe.Integral():.2f}")
 
-        # Calculate and show CDF at several points
         print(f"\nCumulative Distribution Functions (CDF) at selected points:")
         print(f"{'Bin':<5} {'mHH':<10} {'CDF_rw':<12} {'CDF_lhe':<12} {'|Diff|':<10}")
         print("-" * 55)
@@ -250,7 +176,6 @@ def compare_distributions(idx, save_plots=True, debug=False):
         for i in range(0, h_reweight.GetNbinsX(), max(1, h_reweight.GetNbinsX()//10)):
             bin_center = h_reweight.GetBinCenter(i+1)
 
-            # Calculate CDF up to this bin
             cdf_rw = sum([h_reweight.GetBinContent(j+1) for j in range(i+1)]) / h_reweight.Integral()
             cdf_lhe = sum([h_lhe.GetBinContent(j+1) for j in range(i+1)]) / h_lhe.Integral()
             diff = abs(cdf_rw - cdf_lhe)
@@ -268,7 +193,7 @@ def compare_distributions(idx, save_plots=True, debug=False):
 
     ks = h_reweight.KolmogorovTest(h_lhe, "")
 
-    # Compute chi2
+    # chi2
     chi2 = 0
     ndof = 0
     for i in range(h_reweight.GetNbinsX()):
@@ -285,9 +210,8 @@ def compare_distributions(idx, save_plots=True, debug=False):
     print(f"  KS test p-value: {ks:.4f}")
     print(f"  Chi2/ndof: {chi2:.2f}/{ndof} = {chi2/ndof if ndof > 0 else 0:.2f}")
 
-    # Create comparison plot
+    # Comparison plot
     if save_plots:
-        # Create output directory if it doesn't exist
         os.makedirs(PLOT_DIR, exist_ok=True)
 
         fig, (ax, ax2) = plt.subplots(2, 1, figsize=(10, 7), height_ratios=[4, 1])
@@ -306,16 +230,15 @@ def compare_distributions(idx, save_plots=True, debug=False):
         text_base = (r"$\kappa_\lambda$={0:.2f}, $\kappa_t$={1:.2f}, $c_2$={2:.2f}, ".format(
             kl_rw, kt_rw, c2_rw))
 
-        # For cg and c2g, we'll construct separate text elements with colors
         text_y = 1.025*ax.get_ylim()[1]
 
-        # Display base text (kl, kt, c2) - create once
+        # Display base text (kl, kt, c2)
         text_obj = ax.text(200, text_y, text_base, fontsize=14, verticalalignment='bottom')
         fig.canvas.draw()
         bbox = text_obj.get_window_extent(renderer=fig.canvas.get_renderer())
         base_width = bbox.transformed(ax.transData.inverted()).width
 
-        # Now add cg with both values (black for reweight, red for LHE)
+        # Add cg with both values (black for reweight, red for LHE)
         x_pos = 200 + base_width
         cg_label = r"$c_g$="
         text_obj = ax.text(x_pos, text_y, cg_label, fontsize=14,
@@ -359,7 +282,7 @@ def compare_distributions(idx, save_plots=True, debug=False):
         comma_width = bbox.transformed(ax.transData.inverted()).width
         x_pos += comma_width
 
-        # Now add c2g with both values (black for reweight, red for LHE)
+        # Add c2g with both values (black for reweight, red for LHE)
         c2g_label = r"$c_{2g}$="
         text_obj = ax.text(x_pos, text_y, c2g_label, fontsize=14,
                           verticalalignment='bottom', color='black')
@@ -428,16 +351,6 @@ def compare_distributions(idx, save_plots=True, debug=False):
     return results
 
 def compare_all(save_plots=True, debug=False):
-    """
-    Compare all basis points
-
-    Parameters:
-    -----------
-    save_plots : bool
-        Whether to save comparison plots
-    debug : bool
-        Whether to print detailed debug information
-    """
     results = []
 
     print("\n" + "="*80)
