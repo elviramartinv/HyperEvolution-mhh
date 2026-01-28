@@ -15,8 +15,10 @@ import numpy as np
 import mplhep as hep
 plt.style.use(hep.style.CMS)
 import os
-from mhh_scoring import calcDist
+import sys
 import math
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from hyperevol.examples.mhh_scoring import calcDist
 
 # Basis points in reweight convention (from plotCompare.py)
 psotemp_reweight = [
