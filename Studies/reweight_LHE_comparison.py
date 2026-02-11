@@ -77,7 +77,7 @@ psotemp_LHE = [
 EOS_BASE_PATH = "/eos/user/e/emartinv/event_level_reweighting_HH/ggHH_basispoint_13_13p6"
 PLOT_DIR = "reweight_LHE_comparison_plots"
 
-def find_lhe_file(kl, kt, c2, cg, c2g, energy=6500):
+def find_lhe_file(kl, kt, c2, cg, c2g, energy=6800):
     dirname = f"testrun_params_klambda_{kl}_ct_{kt}_ctt_{c2}_cggh_{cg}_cgghh_{c2g}_energy_{energy}_TeV"
     full_path = os.path.join(EOS_BASE_PATH, dirname, "HH_variables", "output.root")
 
@@ -116,10 +116,17 @@ def get_mhh_from_root(root_file_path, reference_hist):
     f.Close()
     return h_clone
 
-def compare_distributions(idx, save_plots=True, debug=False):
+def compare_distributions(idx, save_plots=True, debug=False, energy='13p6'):
     if idx < 0 or idx >= len(psotemp_reweight):
         print(f"Error: Index {idx} out of range (0-{len(psotemp_reweight)-1})")
         return None
+
+    # Load coefficients for specified energy
+    from hyperevol.examples.mhh_scoring import load_coefficients
+    load_coefficients(energy)
+
+    # Set energy in GeV for LHE files
+    energy_gev = 6800 if energy == '13p6' else 6500
 
     # Reweight convention
     kl_rw, kt_rw, c2_rw, cg_rw, c2g_rw = psotemp_reweight[idx]
@@ -128,7 +135,7 @@ def compare_distributions(idx, save_plots=True, debug=False):
     kl_exp, kt_exp, c2_exp, cg_exp, c2g_exp = psotemp_LHE[idx]
 
     print(f"\n{'='*80}")
-    print(f"Comparing basis point {idx}")
+    print(f"Comparing basis point {idx} at {energy} TeV")
     print(f"{'='*80}")
     print(f"Reweight convention: kl={kl_rw:.4f}, kt={kt_rw:.4f}, c2={c2_rw:.4f}, cg={cg_rw:.4f}, c2g={c2g_rw:.4f}")
     print(f"LHE convention:      kl={kl_exp:.4f}, kt={kt_exp:.4f}, c2={c2_exp:.4f}, cg={cg_exp:.4f}, c2g={c2g_exp:.4f}")
@@ -136,7 +143,7 @@ def compare_distributions(idx, save_plots=True, debug=False):
     print("\nDistribution from reweight...")
     h_reweight = calcDist(kl_rw, kt_rw, c2_rw, cg_rw, c2g_rw, samplesize=50000)
 
-    lhe_file = find_lhe_file(kl_exp, kt_exp, c2_exp, cg_exp, c2g_exp)
+    lhe_file = find_lhe_file(kl_exp, kt_exp, c2_exp, cg_exp, c2g_exp, energy=energy_gev)
     if not lhe_file:
         print("Error: Could not find LHE file")
         return None
@@ -212,7 +219,9 @@ def compare_distributions(idx, save_plots=True, debug=False):
 
     # Comparison plot
     if save_plots:
-        os.makedirs(PLOT_DIR, exist_ok=True)
+        # Create energy-specific output directory
+        output_dir = os.path.join(PLOT_DIR, energy)
+        os.makedirs(output_dir, exist_ok=True)
 
         fig, (ax, ax2) = plt.subplots(2, 1, figsize=(10, 7), height_ratios=[4, 1])
 
@@ -313,7 +322,11 @@ def compare_distributions(idx, save_plots=True, debug=False):
         text_obj = ax.text(x_pos, text_y, c2g_lhe_text, fontsize=14,
                           verticalalignment='bottom', color='red')
 
-        hep.cms.lumitext(r'138 fb$^{-1}$ (13 TeV)', ax=ax)
+        # Set lumitext based on energy
+        if energy == '13':
+            hep.cms.lumitext(r'138 fb$^{-1}$ (13 TeV)', ax=ax)
+        else:  # 13p6
+            hep.cms.lumitext(r'138 fb$^{-1}$ (13.6 TeV)', ax=ax)
 
         # Ratio plot
         ratio = h_lhe.Clone("ratio")
@@ -328,7 +341,7 @@ def compare_distributions(idx, save_plots=True, debug=False):
         ax.set_xticklabels([])
         plt.subplots_adjust(wspace=0, hspace=0.05)
 
-        plotname = os.path.join(PLOT_DIR, f"comparison_basis_{idx}_kl{kl_rw:.2f}_kt{kt_rw:.2f}.png")
+        plotname = os.path.join(output_dir, f"comparison_basis_{idx}_kl{kl_rw:.2f}_kt{kt_rw:.2f}.png")
         plt.savefig(plotname, dpi=300, bbox_inches='tight')
         print(f"\nPlot saved as: {plotname}")
         plt.close()
@@ -350,15 +363,15 @@ def compare_distributions(idx, save_plots=True, debug=False):
 
     return results
 
-def compare_all(save_plots=True, debug=False):
+def compare_all(save_plots=True, debug=False, energy='13p6'):
     results = []
 
     print("\n" + "="*80)
-    print("COMPARING ALL BASIS POINTS")
+    print(f"COMPARING ALL BASIS POINTS at {energy} TeV")
     print("="*80)
 
     for idx in range(len(psotemp_reweight)):
-        result = compare_distributions(idx, save_plots=save_plots, debug=debug)
+        result = compare_distributions(idx, save_plots=save_plots, debug=debug, energy=energy)
         if result:
             results.append(result)
 
@@ -381,10 +394,19 @@ if __name__ == "__main__":
     debug = "--debug" in sys.argv or "-d" in sys.argv
     sys.argv = [arg for arg in sys.argv if arg not in ["--debug", "-d"]]
 
+    # Parse energy argument (default: 13p6)
+    energy = '13p6'
+    if "--energy=13" in sys.argv or "-e13" in sys.argv:
+        energy = '13'
+        sys.argv = [arg for arg in sys.argv if arg not in ["--energy=13", "-e13"]]
+    elif "--energy=13p6" in sys.argv or "-e13p6" in sys.argv:
+        energy = '13p6'
+        sys.argv = [arg for arg in sys.argv if arg not in ["--energy=13p6", "-e13p6"]]
+
     if len(sys.argv) > 1:
         # Compare specific basis point
         idx = int(sys.argv[1])
-        compare_distributions(idx, save_plots=True, debug=debug)
+        compare_distributions(idx, save_plots=True, debug=debug, energy=energy)
     else:
         # Compare all basis points
-        compare_all(save_plots=True, debug=debug)
+        compare_all(save_plots=True, debug=debug, energy=energy)

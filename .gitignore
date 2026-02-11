@@ -130,3 +130,10 @@ dmypy.json
 .pyre/
 
 output/
+
+# Studies outputs
+Studies/*output/
+Studies/*plots/
+
+# PSO optimization results
+hyperevol/examples/pso*

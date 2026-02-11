@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import mplhep as hep
 plt.style.use(hep.style.CMS)
+import seaborn as sns
+petroff_10 = sns.color_palette("tab10", 10)
 import os
 import re
 from array import array
@@ -392,28 +394,36 @@ def compare_morphed_to_target(target_info, save_plots=True, debug=False, use_nlo
 
         fig, (ax, ax2) = plt.subplots(2, 1, figsize=(10, 7), height_ratios=[4, 1])
 
-        hep.histplot(h_morphed, histtype='errorbar', label='From mHH basis',
-                     linewidth=2, color='blue', ax=ax)
         hep.histplot(h_target, histtype='errorbar', label='From LHE',
-                     linewidth=2, color='red', ax=ax)
+                     linewidth=3, color='black', ax=ax)
+
+        hep.histplot(h_morphed, histtype='band', linewidth=3, alpha=0.5,
+                     color=petroff_10[0], ax=ax)
+        hep.histplot(h_morphed, histtype='errorbar', label='From mHH basis',
+                     linewidth=3, color=petroff_10[0], ax=ax)
 
         ax.legend(loc='upper right', fontsize=12)
-        ax.set_ylabel("Events", fontsize=16)
+        ax.set_ylabel("Events\n", fontsize=16)
         ax.set_xlim(200, 1500)
 
-        text_y = 1.02 * ax.get_ylim()[1]
+        chi2_ndof = chi2/ndof if ndof > 0 else 0
         coupling_text = (r"$\kappa_\lambda$={:.3f}, $\kappa_t$={:.3f}, $c_2$={:.3f}, "
-                        r"$c_g$={:.3f}, $c_{{2g}}$={:.3f}, KS={:.3f}".format(kl, kt, c2, cg, c2g, ks))
-        ax.text(200, text_y, coupling_text, fontsize=12, verticalalignment='bottom')
+                        r"$c_g$={:.3f}, $c_{{2g}}$={:.3f}, $\chi^2$/ndof={:.2f}".format(kl, kt, c2, cg, c2g, chi2_ndof))
+        ax.text(200, 1.01 * ax.get_ylim()[1], coupling_text, fontsize=12, verticalalignment='bottom')
 
-        hep.cms.lumitext(r'138 fb$^{-1}$ (13 TeV)', ax=ax)
+        hep.cms.lumitext(r'138 fb$^{-1}$ (13 TeV)', ax=ax, fontsize=16)
 
-        ratio = h_target.Clone("ratio")
-        ratio.Divide(h_morphed)
-        hep.histplot(ratio, histtype='errorbar', linewidth=2, color='red', ax=ax2)
-        ax2.axhline(1, color='blue', linewidth=2, linestyle='--')
+        # Ratio plot with band + errorbar
+        ratio = h_morphed.Clone("ratio")
+        ratio.Divide(h_target)
+        hep.histplot(ratio, histtype='band', linewidth=3, alpha=0.5,
+                     color=petroff_10[0], ax=ax2)
+        hep.histplot(ratio, histtype='errorbar', linewidth=3,
+                     color=petroff_10[0], ax=ax2)
+        ax2.axline((ax2.get_xlim()[0], 1), (ax2.get_xlim()[1], 1),
+                   linewidth=3, color='black')
         ax2.set_xlabel(r"$m_{HH}$ (GeV)", fontsize=12)
-        ax2.set_ylabel("Ratio", fontsize=16)
+        ax2.set_ylabel("Ratio\n", fontsize=16)
         ax2.set_ylim(0.5, 1.5)
         ax2.set_xlim(200, 1500)
 
