@@ -110,6 +110,7 @@ xscoffs = [0.06149445582502288,
 
 # NLO formula for gghH XS
 def calcXS(coeffs, kl, kt, c2, cg, c2g):
+    # comment this and change in config to use Nicholas convention
     cg = cg/1.5
     c2g = -c2g/3
     xs = coeffs[0]*kt*kt*kt*kt
@@ -240,7 +241,29 @@ def makeTestSet(seed=12345678, size=5000, samplesize=5000, c2glimited=False):
     return toys
 
 # Matrix inversion formula (NLO)
+def func5D_LO(sample):
+    """LO terms (15 terms)"""
+    kl, kt, c2, cg, c2g = sample
+    return [
+        kl**2 * kt**2,
+        2*kl**2 * kt * cg,
+        kl**2 * cg**2,
+        2*kl * kt**3,
+        2*kl * kt**2 * cg,
+        2*kl * kt * c2,
+        2*kl * kt * c2g,
+        2*kl * c2 * cg,
+        2*kl * cg * c2g,
+        kt**4,
+        2*kt**2 * c2,
+        2*kt**2 * c2g,
+        c2**2,
+        2*c2 * c2g,
+        c2g**2,
+    ]
+
 def func5D(sample):
+    """NLO terms (23 terms)"""
     kl, kt, c2, cg, c2g = sample
     return [
         kl**2 * kt**2,
@@ -268,11 +291,12 @@ def func5D(sample):
         cg**2 * c2g,
     ]
 
-def model_5D(inputs, kl, kt, c2, cg, c2g):
+def model_5D(inputs, kl, kt, c2, cg, c2g, use_LO=False):
+    func = func5D_LO if use_LO else func5D
     M = sympy.Matrix([
-         func5D(sample)  for i, sample in enumerate(inputs)
+         func(sample)  for i, sample in enumerate(inputs)
         ])
-    c = sympy.Matrix(func5D([kl, kt, c2, cg, c2g]))
+    c = sympy.Matrix(func([kl, kt, c2, cg, c2g]))
     M_inv = M.pinv()
     coeffs = c.transpose() * M_inv
     return [float(co) for co in coeffs]
@@ -289,9 +313,9 @@ def makebase(ipt, start=[]):
     return base
 
 # calc dist using matrix inverison model instead of toys by linear combination of input scenarios
-def calcDistModel(kl, kt, c2, cg, c2g, inputs, samplesize=5000, start=[]):
+def calcDistModel(kl, kt, c2, cg, c2g, inputs, samplesize=5000, start=[], use_LO=False):
     base = makebase(inputs, start=start)
-    coeffs = model_5D(base, kl, kt, c2, cg, c2g)
+    coeffs = model_5D(base, kl, kt, c2, cg, c2g, use_LO=use_LO)
     inputdists = []
     for i in base:
         kl_i, kt_i, c2_i, cg_i, c2g_i = i
@@ -503,6 +527,33 @@ def check_error(output_dir):
         print(f"Found {number_errors} errors. Stopping optimization.")
         raise SystemExit(0)
 
+def renew_kerberos_token():
+    """Attempt to renew Kerberos and AFS tokens
+
+    Returns:
+    --------
+    success : bool
+        True if renewal was successful or not needed, False otherwise
+    """
+    try:
+        # Try to renew Kerberos ticket
+        result = subprocess.run(
+            ['kinit', '-R'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            subprocess.run(['aklog'], capture_output=True, timeout=5)
+            print("✓ Kerberos/AFS tokens renewed successfully")
+            return True
+        else:
+            print("⚠ Token renewal failed. You may need to run 'kinit' manually in another terminal.")
+            return False
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+        return False
+
 def wait_iteration(output_dir, sample_size, cluster_id=None):
     """Waits until all batch jobs are finised and in case of and warning
     or error that appears in the error file, stops running the optimization
@@ -524,6 +575,8 @@ def wait_iteration(output_dir, sample_size, cluster_id=None):
     status_file = os.path.join(output_dir, 'status.json')
     start_time = time.time()
     last_update = 0
+    last_token_renewal = time.time()
+    token_renewal_interval = 36000  # Renew tokens every 10 hours
 
     print(f"\nWaiting for {sample_size} jobs...")
     print(f"Use: python3 mhh_scoring.py --monitor={output_dir}")
@@ -542,12 +595,28 @@ def wait_iteration(output_dir, sample_size, cluster_id=None):
                 'cluster_id': cluster_id,
                 'iteration': find_iter_number(os.path.join(output_dir, 'previous_files'))
             }
-            with open(status_file, 'w') as f:
-                json.dump(status, f, indent=2)
+            try:
+                with open(status_file, 'w') as f:
+                    json.dump(status, f, indent=2)
+            except PermissionError:
+                print("⚠ Warning: Unable to write status file (permission denied). Attempting token renewal...")
+                if renew_kerberos_token():
+                    try:
+                        with open(status_file, 'w') as f:
+                            json.dump(status, f, indent=2)
+                    except PermissionError:
+                        print("❌ Still unable to write final status file after token renewal.")
             print(f"✓ All jobs completed ({completed}/{sample_size}) in {elapsed:.1f}s")
             break
 
         current_time = time.time()
+
+        # Renew tokens periodically
+        if current_time - last_token_renewal >= token_renewal_interval:
+            print(f"\nRenewing Kerberos/AFS tokens (after {token_renewal_interval/3600:.1f} hours)...")
+            renew_kerberos_token()
+            last_token_renewal = current_time
+
         if current_time - last_update >= 300:
             elapsed = current_time - start_time
 
@@ -577,8 +646,18 @@ def wait_iteration(output_dir, sample_size, cluster_id=None):
                 except (subprocess.TimeoutExpired, FileNotFoundError):
                     pass
 
-            with open(status_file, 'w') as f:
-                json.dump(status, f, indent=2)
+            try:
+                with open(status_file, 'w') as f:
+                    json.dump(status, f, indent=2)
+            except PermissionError:
+                print("⚠ Warning: Unable to write status file (permission denied). Attempting token renewal...")
+                if renew_kerberos_token():
+                    # Try writing again after renewal
+                    try:
+                        with open(status_file, 'w') as f:
+                            json.dump(status, f, indent=2)
+                    except PermissionError:
+                        print("❌ Still unable to write status file after token renewal.")
 
             last_update = current_time
 
@@ -656,6 +735,16 @@ def ensemble_score_condor(parameter_dicts, settings):
 
     if not os.path.exists(previous_files_dir):
         os.makedirs(previous_files_dir)
+
+    # Clean old score.json files before starting new iteration from checkpoint
+    samples_dir = os.path.join(output_dir, 'samples')
+    if os.path.exists(samples_dir):
+        for score_file in glob.glob(os.path.join(samples_dir, '*', 'score.json')):
+            try:
+                os.remove(score_file)
+            except OSError:
+                pass
+
     parameters_to_file(output_dir, parameter_dicts)
     submit_file = prepare_condor_submit(output_dir, settings)
     print(f"\nSending {len(parameter_dicts)} jobs to HTCondor...")
@@ -765,6 +854,15 @@ def resume_optimization(output_dir, pso_cfg):
     print(f"Checkpoint found at iteration {checkpoint['iteration']}")
     print(f"Global best so far: {checkpoint['global_best']}")
 
+    # Clean up iterations after checkpoint (in case of previous incomplete run)
+    previous_files_dir = os.path.join(output_dir, 'previous_files')
+    checkpoint_iter = checkpoint['iteration']
+    for old_iter_dir in glob.glob(os.path.join(previous_files_dir, 'iteration_*')):
+        iter_num = int(os.path.basename(old_iter_dir).split('_')[1])
+        if iter_num > checkpoint_iter:
+            print(f"Cleaning up incomplete iteration {iter_num}")
+            shutil.rmtree(old_iter_dir)
+
     hyperparameters = read_cfg(pso_cfg["hpconfig"])
     toys = makeTestSet(size=2500, samplesize=pso_cfg['samplesize'], c2glimited=pso_cfg['c2glimited'])
     start = pso_cfg['basis']
@@ -809,9 +907,8 @@ def resume_optimization(output_dir, pso_cfg):
         for particle in swarm.swarm:
             particle.next_iteration(swarm.swarm)
 
-        # Save checkpoint every 5 iterations
-        if iteration % 5 == 0:
-            save_checkpoint(swarm, output_dir, iteration)
+        # Save checkpoint after each iteration
+        save_checkpoint(swarm, output_dir, iteration)
 
         iteration += 1
 
@@ -882,9 +979,8 @@ def main(output_dir: str, pso_cfg: dict) -> None:
         for particle in swarm.swarm:
             particle.next_iteration(swarm.swarm)
 
-        # Save checkpoint every 5 iterations
-        if iteration % 5 == 0:
-            save_checkpoint(swarm, output_dir, iteration)
+        # Save checkpoint after each iteration
+        save_checkpoint(swarm, output_dir, iteration)
 
         iteration += 1
 
