@@ -332,44 +332,69 @@ def scoretoy(basis, toy, start=[], samplesize=5000):
     kl, kt, c2, cg, c2g = toy
     h1 = calcDist(kl, kt, c2, cg, c2g, samplesize=samplesize)
     h2 = calcDistModel(kl, kt, c2, cg, c2g, inputs=basis, start=start, samplesize=samplesize)
-    #KS = h1.KolmogorovTest(h2, "")
-    CHI2 = sum([math.pow((h1.GetBinContent(i+1)-h2.GetBinContent(i+1)),2)/(math.pow(h1.GetBinError(i+1),2)+math.pow(h2.GetBinError(i+1),2)) for i in range(h1.GetNbinsX())])
-    stat = sum([abs(h2.GetBinError(i+1)/(h2.GetBinContent(i+1)+0.0000001)) for i in range(h2.GetNbinsX())])
-    statref = sum([abs(h1.GetBinError(i+1)/(h1.GetBinContent(i+1)+0.0000001)) for i in range(h1.GetNbinsX())])
-    STAT = stat/statref
-    CHI2 = CHI2/h1.GetNbinsX()
-    return CHI2, STAT
-    #return KS, STAT
+    n_bins = h1.GetNbinsX()
+
+    CHI2 = sum([math.pow((h1.GetBinContent(i+1)-h2.GetBinContent(i+1)),2)/(math.pow(h1.GetBinError(i+1),2)+math.pow(h2.GetBinError(i+1),2)) for i in range(n_bins)])
+    CHI2 = CHI2 / n_bins
+
+    # Poisson NLL: -2lnL = 2[m - d + d*ln(d/m)]
+    nll = 0.0
+    bad_bins = 0
+    for i in range(1, n_bins + 1):
+        d = h1.GetBinContent(i)
+        m = h2.GetBinContent(i)
+        if m <= 1e-10:
+            bad_bins += 1
+            nll += 1e2
+            continue
+        if d > 0:
+            nll += 2 * (m - d + d * math.log(d / m))
+        else:
+            nll += 2 * m
+    NLL = (nll / n_bins) + 10 * bad_bins
+
+    stat = sum([abs(h2.GetBinError(i+1)/(h2.GetBinContent(i+1)+0.0000001)) for i in range(n_bins)])
+    statref = sum([abs(h1.GetBinError(i+1)/(h1.GetBinContent(i+1)+0.0000001)) for i in range(n_bins)])
+    STAT = stat / statref
+
+    return CHI2, NLL, STAT
 
 #def scorefunc(ks, stat, ksstregth=0.5, statstrength=0.5):
 #    return ksstregth*(math.log(ks)+1) + statstrength*(-np.power(2,min(stat-1,50)) + 1/(stat+0.0001))
 
-def scorefunc(chi2, stat, chi2strength=0.5, statstrength=0.5):
-    return 1/(chi2strength*chi2+statstrength*math.pow(stat,1))
+def scorefunc(primary_metric, stat, primary_strength=0.5, statstrength=0.5):
+    """Primary_metric is either chi2 or nll."""
+    return 1 / (primary_strength * primary_metric + statstrength * math.pow(stat, 1))
 
-def scorebasis(basis, toys, start=[], samplesize=5000, extra=False, chi2strength=0.5, statstrength=0.5):
-    score = 0
-    #avgks = 0
-    avgchi2 = 0
-    avgstat = 0
+def scorebasis(basis, toys, start=[], samplesize=5000, extra=False,
+               chi2strength=None, nllstrength=None, statstrength=0.5):
+    """
+    Metric is selected from the config:
+      - nllstrength set  → use Poisson NLL + STAT
+      - chi2strength set  → use chi2 + STAT  (default if neither/both set)
+    """
+    if nllstrength is not None and chi2strength is None:
+        use_nll = True
+        primary_strength = nllstrength
+    else:
+        use_nll = False
+        primary_strength = chi2strength if chi2strength is not None else 0.5
+
+    avg_primary = 0.0
+    avgstat = 0.0
     for it, t in enumerate(toys):
-        if it % 100 == 0 : print("evaluating basis:", hash(str(basis)), ":", it, "/", len(toys))
-        #ks, stat = scoretoy(basis, t, start, samplesize=samplesize)
-        #avgks+=ks
-        chi2, stat = scoretoy(basis, t, start, samplesize=samplesize)
-        avgchi2+=chi2
-        avgstat+=stat
-        #score += scorefunc(ks, stat, ksstregth, statstrength)
-        # score += scorefunc(chi2, stat, chi2strength, statstrength)
-    #score /= len(toys)
-    #avgks /= len(toys)
-    avgchi2 /= len(toys)
+        if it % 100 == 0:
+            print("evaluating basis:", hash(str(basis)), ":", it, "/", len(toys))
+        chi2, nll, stat = scoretoy(basis, t, start, samplesize=samplesize)
+        avg_primary += nll if use_nll else chi2
+        avgstat += stat
+
+    avg_primary /= len(toys)
     avgstat /= len(toys)
-    score = scorefunc(avgchi2, avgstat, chi2strength, statstrength)
+    score = scorefunc(avg_primary, avgstat, primary_strength, statstrength)
     if extra:
-        #return -1*score, avgks, avgstat
-        return -1*score, avgchi2, avgstat
-    return  -1*score
+        return -1 * score, avg_primary, avgstat
+    return -1 * score
 
 def ensemble_score(
         parameter_dicts,
@@ -377,7 +402,19 @@ def ensemble_score(
         toys=[],
         start=[],
 ):
-    sb = functools.partial(scorebasis, toys=toys, start=start, samplesize=settings['samplesize'], chi2strength=settings['chi2strength'], statstrength=settings['statstrength'])
+    # Detect metric from config: nllstrength → NLL+STAT, chi2strength → CHI2+STAT
+    nllstrength = settings.get('nllstrength', None)
+    chi2strength = settings.get('chi2strength', None)
+    statstrength = settings.get('statstrength', 0.5)
+    sb = functools.partial(
+        scorebasis,
+        toys=toys,
+        start=start,
+        samplesize=settings['samplesize'],
+        chi2strength=chi2strength,
+        nllstrength=nllstrength,
+        statstrength=statstrength,
+    )
     pool = Pool(processes=25)
     print(len(parameter_dicts))
     out = pool.map(sb, parameter_dicts)
@@ -702,6 +739,27 @@ def find_iter_number(previous_files_dir):
     iter_number = len(glob.glob(wild_card_path))
     return iter_number
 
+def cleanup_old_iterations(previous_files_dir, keep_last=50):
+    """
+    Example with keep_last=50:
+      - At iteration 50  → clears contents of iterations 0-49
+      - At iteration 100 → clears contents of iterations 50-99
+      - etc.
+    """
+    current_iter = find_iter_number(previous_files_dir)
+    if current_iter == 0 or current_iter % keep_last != 0:
+        return
+    batch_start = current_iter - keep_last
+    batch_end = current_iter - 1
+    cleaned = 0
+    for i in range(batch_start, batch_end + 1):
+        iter_dir = os.path.join(previous_files_dir, f'iteration_{i}')
+        if os.path.exists(iter_dir) and os.listdir(iter_dir):
+            shutil.rmtree(iter_dir)
+            os.makedirs(iter_dir)  # keep empty dir to preserve counter
+            cleaned += 1
+    if cleaned > 0:
+        print(f"Auto-cleanup: cleared contents of iterations {batch_start}-{batch_end} ({cleaned} dirs freed)")
 
 def parameters_to_file(output_dir, hyperparameter_sets):
     """Saves the parameters to the subdirectory (name=sample number) of the
@@ -794,6 +852,7 @@ def ensemble_score_condor(parameter_dicts, settings):
 
     scores = read_fitness(output_dir)
     move_previous_files(output_dir, previous_files_dir)
+    cleanup_old_iterations(previous_files_dir)
 
     return scores
 
@@ -1081,17 +1140,27 @@ if __name__ == '__main__':
             hyperparameters = read_json_cfg(parameter_file)
             toys=makeTestSet(size=pso_cfg['toysize'], samplesize=pso_cfg['samplesize'], c2glimited=pso_cfg['c2glimited'])
             start=pso_cfg['basis']
-            score, avgchi2, avgstat = scorebasis(hyperparameters, toys, start, samplesize=pso_cfg['samplesize'], extra=True, chi2strength=pso_cfg['chi2strength'], statstrength=pso_cfg['statstrength'])
+            nllstrength = pso_cfg.get('nllstrength', None)
+            chi2strength = pso_cfg.get('chi2strength', None)
+            statstrength = pso_cfg.get('statstrength', 0.5)
+            score, avg_primary, avgstat = scorebasis(
+                hyperparameters, toys, start,
+                samplesize=pso_cfg['samplesize'],
+                extra=True,
+                chi2strength=chi2strength,
+                nllstrength=nllstrength,
+                statstrength=statstrength,
+            )
+            metric_label = 'avgnll' if (nllstrength is not None and chi2strength is None) else 'avgchi2'
             path = Path(parameter_file)
             save_dir = str(path.parent)
-            start=pso_cfg['basis']
             basis = makebase(hyperparameters, start=start)
             score_path = os.path.join(save_dir, 'score.json')
             score_dict = {
                 'fitness': score,
                 'score': -1*(score),
                 'basis': basis,
-                'avgchi2': avgchi2,
+                metric_label: avg_primary,
                 'avgstat': avgstat
             }
             with open(score_path, 'w') as score_file:
